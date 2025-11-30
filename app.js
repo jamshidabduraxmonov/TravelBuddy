@@ -86,12 +86,13 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
     profile = p; // EDIT: Set global profile
 
     document.getElementById('app').innerHTML = `
+      <div id="content"></div>
       <div class="nav">
         <button id="feedBtn" class="active">Feed</button>
         <button id="inboxBtn">Inbox</button>
         <button id="chatBtn">Chat</button>
+        <button id="profileBtn">Profile</button>
       </div>
-      <div id="content"></div>
     `;
 
     const content = document.getElementById('content');
@@ -234,20 +235,32 @@ document.addEventListener('click', (e) => {
   if (e.target.id === 'feedBtn') {
     document.getElementById('feedBtn').classList.add('active');
     document.getElementById('inboxBtn').classList.remove('active');
+    document.getElementById('chatBtn').classList.remove('active'); // Line for the 'chatBtn'
+    document.getElementById('profileBtn').classList.remove('active');
     renderFeed();
   } else if (e.target.id === 'inboxBtn') {
     document.getElementById('inboxBtn').classList.add('active');
     document.getElementById('feedBtn').classList.remove('active');
+    document.getElementById('chatBtn').classList.remove('active');
+    document.getElementById('profileBtn').classList.remove('active');
     renderInbox();
+  } else if (e.target.id === 'chatBtn') {
+    document.getElementById('chatBtn').classList.add('active');
+    document.getElementById('inboxBtn').classList.remove('active');
+    document.getElementById('feedBtn').classList.remove('active');
+    document.getElementById('profileBtn').classList.remove('active');
+    renderChat(currentChatMatchId);
+  } else if (e.target.id === 'profileBtn') {
+    document.getElementById('chatBtn').classList.remove('active');
+    document.getElementById('inboxBtn').classList.remove('active');
+    document.getElementById('feedBtn').classList.remove('active');
+    document.getElementById('profileBtn').classList.add('active');
+    renderProfileSettings();
   }
+
 });
 
-// Onclick for the chatBtn
-document.getElementById('chatBtn').onclick = () => {
-  document.querySelector('.nav button.active')?.classList.remove('active'); // Remove active from others
-  document.getElementById('chatBtn').classList.add('active'); // Make chat button active
-  renderChat(currentChatMatchId); // Render chat for selected match
-}
+
 
 
     // EDIT: Start on Feed
@@ -313,8 +326,7 @@ async function renderChat(matchId) {
 }
 
 
-// Add to your app.js
-async
+
 
 
 
@@ -394,3 +406,95 @@ function listenToChat(matchId) {
 // To make it global
     window.sendMessage = sendMessage;
     window.listenToChat = listenToChat;
+
+
+
+
+
+
+// Profile page functions and code
+async function renderProfileSettings() {
+  content.innerHTML = `
+    <div class="profile-settings">
+      <h2>Profile Settings</h2>
+
+      <!-- Profile Picture Section -->
+      <div class="profile-picture-section">
+        <div class="profile-avatar" id="profileAvatar">
+          ${profile.name ? profile.name.charAt(0).toUpperCase() : '?'}
+        </div>
+        <input type="file" id="profilePhoto" accept="image/*" style="display:none;">
+        <button onclick="document.getElementById('profilePhoto').click()" class="change-photo-btn">
+          Change Profile Picture
+        </button> 
+      </div>
+
+
+      <!-- Name Section -->
+      <div class="setting-group">
+        <label>Your Name</label>
+        <input type="text" id="profileName" value="${profile.name || ''}" placeholder="Enter your name">
+      </div>
+
+      <!-- Vibe Section -->
+      <div class="setting-group">
+        <label>Your Travel Vibe</label>
+        <div class="vibe-options">
+          ${['Budget Explorer', 'Luxury Relaxer', 'Culture Seker', 'Adrenaline Junkie']
+            .map(vibe => `
+               <label class="vibe-option">
+                <input type='radio' name="profileVibe" value="${vibe}"
+                  ${profile.vibe && profile.vibe.includes(vibe) ? 'checked' : ''}>
+                ${vibe}
+               </label>
+              `).join('')}
+        </div>
+      </div>
+
+      <!-- Save Button -->
+      <button id="saveProfile" class="save-btn">Save Changes</button>
+    </div>
+  `;
+
+  // Handle profile photo upload (basic version)
+  document.getElementById('profilePhoto').onchange = function(e) {
+    const file = e.target.files[0];
+    if(file) {
+      // For now, just show preview (we'll add Firebase Storage later)
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        document.getElementById('profileAvatar').style.backgroundImage = `
+          url(${e.target.result})`;
+        document.getElementById('profileAvatar').innerHTML = '';
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Handle and save profile
+  document.getElementById('saveProfile').onclick = async () => {
+    const newName = document.getElementById('profileName').value.trim();
+    const selectedVibe = document.querySelector('input[name="profileVibe"]:checked')?.value;
+
+    if (!newName || !selectedVibe) {
+      alert('Please fill in both name and travel vibe');
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        name: newName,
+        vibe: [selectedVibe],
+        updatedAt: new Date()
+      }, { merge: true });
+
+      // Update global profile
+      profile.name = newName;
+      profile.vibe = [selectedVibe];
+
+      alert('Profile updated successfully!');
+    } catch(error) {
+      alert('Error updating profile: ' + error.message);
+    }
+  };
+}
