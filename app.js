@@ -546,6 +546,7 @@ if (profile.photoURL) {
 document.getElementById('saveProfile').onclick = async () => {
   const newName = document.getElementById('profileName').value.trim();
   const selectedVibe = document.querySelector('input[name="profileVibe"]:checked')?.value;
+  const tempPhotoURL = document.getElementById('profileAvatar').dataset.tempPhoto; // ← ADD THIS LINE
 
   if (!newName || !selectedVibe) {
     alert('Please fill in both name and travel vibe');
@@ -553,15 +554,24 @@ document.getElementById('saveProfile').onclick = async () => {
   }
 
   try {
-    await setDoc(doc(db, "users", user.uid), {
+    // Build update data
+    const updateData = {
       name: newName,
       vibe: [selectedVibe],
       updatedAt: new Date()
-    }, { merge: true });
+    };
+    
+    // ADD PHOTOURL IF EXISTS
+    if (tempPhotoURL) {
+      updateData.photoURL = tempPhotoURL; // ← THIS IS THE MISSING LINE!
+    }
+
+    await setDoc(doc(db, "users", user.uid), updateData, { merge: true }); // ← Use updateData
 
     // Update global profile
     profile.name = newName;
     profile.vibe = [selectedVibe];
+    if (tempPhotoURL) profile.photoURL = tempPhotoURL; // ← ALSO UPDATE GLOBAL PROFILE
 
     alert('Profile updated successfully!');
   } catch(error) {
