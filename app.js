@@ -14,6 +14,10 @@ import { addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/f
 // For login interface - onAuthStateChanged()
 import { getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
+// For profile picture storage
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
+
+
 const firebaseConfig = {
   apiKey: "AIzaSyBUQd_x2mj0KO6V6QL6IpAlGS2c9R3btz8",
   authDomain: "travelbuddy-8b52e.firebaseapp.com",
@@ -27,6 +31,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// ADD THIS LINE after initializing auth and db
+const storage = getStorage(app); // New Line: Inititalizing Firebase Storage
 
 // EDIT: Add globals for user and profile to make them accessible in functions
 let user = null;
@@ -90,7 +97,6 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
       <div class="nav">
         <button id="feedBtn" class="active">Feed</button>
         <button id="inboxBtn">Inbox</button>
-        <button id="chatBtn">Chat</button>
         <button id="profileBtn">Profile</button>
       </div>
     `;
@@ -202,6 +208,7 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
           matchId: matchDoc.id,
           name: otherProfile.name || "Unknown User",
           vibe: otherProfile.vibe?.[0] || "Unknown",
+          photoURL: otherProfile.photoURL || null, // NEW LINE: Include photo URL
           lastMsg
         };
       });
@@ -215,8 +222,14 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
         <div class="matches-list">
           ${matches.map(m => `
             <div class="match-item" data-matchid="${m.matchId}">
-              <strong>${m.name}</strong> <small>(${m.vibe})</small><br>
-              <small>${m.lastMsg || "No messages yet"}</small>
+              <div class="match-avatar" style="${m.photoURL ? `background-image:
+                url('${m.photoURL}')` : ''}"> <!-- NEW: Show photo -->
+                  ${!m.photoURL ? m.name.charAt(0).toUpperCase() : ''} <!-- CHANGED: Initial if no photo -->
+              </div>
+              <div class="match-content">
+                <strong>${m.name}</strong> <small>(${m.vibe})</small><br>
+                <small>${m.lastMsg || "No messages yet"}</small>
+              </div>
             </div>
             `).join('')}
         </div>
@@ -235,23 +248,14 @@ document.addEventListener('click', (e) => {
   if (e.target.id === 'feedBtn') {
     document.getElementById('feedBtn').classList.add('active');
     document.getElementById('inboxBtn').classList.remove('active');
-    document.getElementById('chatBtn').classList.remove('active'); // Line for the 'chatBtn'
     document.getElementById('profileBtn').classList.remove('active');
     renderFeed();
   } else if (e.target.id === 'inboxBtn') {
     document.getElementById('inboxBtn').classList.add('active');
     document.getElementById('feedBtn').classList.remove('active');
-    document.getElementById('chatBtn').classList.remove('active');
     document.getElementById('profileBtn').classList.remove('active');
     renderInbox();
-  } else if (e.target.id === 'chatBtn') {
-    document.getElementById('chatBtn').classList.add('active');
-    document.getElementById('inboxBtn').classList.remove('active');
-    document.getElementById('feedBtn').classList.remove('active');
-    document.getElementById('profileBtn').classList.remove('active');
-    renderChat(currentChatMatchId);
   } else if (e.target.id === 'profileBtn') {
-    document.getElementById('chatBtn').classList.remove('active');
     document.getElementById('inboxBtn').classList.remove('active');
     document.getElementById('feedBtn').classList.remove('active');
     document.getElementById('profileBtn').classList.add('active');
@@ -273,7 +277,12 @@ document.addEventListener('click', (e) => {
  // OPENCHAT !!!
   function openChat(matchId) {
     currentChatMatchId = matchId; // Set the selected match ID
-    document.getElementById('chatBtn').click();
+    document.getElementById('inboxBtn').classList.add('active');
+    document.getElementById('feedBtn').classList.remove('active');
+    document.getElementById('profileBtn').classList.remove('active');
+
+    renderChat(matchId);
+
     console.log("Opening chat with", matchId);
   }
 
@@ -282,9 +291,16 @@ document.addEventListener('click', (e) => {
 // Function to render chats
 async function renderChat(matchId) {
   if(!matchId) {
-    content.innerHTML = `<p>Select a match first from Inbox.</p>`; // Show message if no match
+
     return;
   };
+
+  
+  // Keep inbox button active while in chat
+  document.getElementById('inboxBtn').classList.add('active');
+  document.getElementById('feedBtn').classList.remove('active');
+  document.getElementById('profileBtn').classList.remove('active');
+
 
   content.innerHTML = `
     <div class="chat">
@@ -412,6 +428,8 @@ function listenToChat(matchId) {
 
 
 
+
+
 // Profile page functions and code
 async function renderProfileSettings() {
   content.innerHTML = `
@@ -420,14 +438,20 @@ async function renderProfileSettings() {
 
       <!-- Profile Picture Section -->
       <div class="profile-picture-section">
-        <div class="profile-avatar" id="profileAvatar">
-          ${profile.name ? profile.name.charAt(0).toUpperCase() : '?'}
+        <div class="profile-avatar" id="profileAvatar"
+            style="${profile.photoURL ? `background-image: url('${profile.photoURL}')`: ''
+          }"> <!-- ADDED: Show existing photo -->
+            ${!profile.photoURL && profile.name ? 
+              profile.name.charAt(0).toUpperCase() : ''} <!-- CHANGED: Only initial if no photo -->
         </div>
         <input type="file" id="profilePhoto" accept="image/*" style="display:none;">
-        <button onclick="document.getElementById('profilePhoto').click()" class="change-photo-btn">
-          Change Profile Picture
+        <button id="uploadPhotoBtn" class="change-photo-btn">
+          ${profile.photoURL ? 'Change Photo' : 'Upload Photo'} <!-- CHANGED: Dynamic button text -->
         </button> 
+        ${profile.photoURL ? '<button id="removePhotoBtn" class="remove-btn">Remove Photo</button>' : ''} <!-- NEW: Remove button -->
       </div>
+
+
 
 
       <!-- Name Section -->
@@ -457,44 +481,93 @@ async function renderProfileSettings() {
   `;
 
   // Handle profile photo upload (basic version)
-  document.getElementById('profilePhoto').onchange = function(e) {
-    const file = e.target.files[0];
-    if(file) {
-      // For now, just show preview (we'll add Firebase Storage later)
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        document.getElementById('profileAvatar').style.backgroundImage = `
-          url(${e.target.result})`;
-        document.getElementById('profileAvatar').innerHTML = '';
-      };
-      reader.readAsDataURL(file);
-    }
+  
+
+// REPLACE your current photo handler with this:
+
+// Upload photo handler - NEW CODE
+document.getElementById('uploadPhotoBtn').onclick = () => 
+  document.getElementById('profilePhoto').click();
+
+document.getElementById('profilePhoto').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // Show loading
+  document.getElementById('profileAvatar').innerHTML = '⏳';
+  
+  try {
+    // Upload to Firebase Storage - NEW CODE
+    const storageRef = ref(storage, `profile-pics/${user.uid}`);
+    await uploadBytes(storageRef, file);
+    
+    // Get download URL - NEW CODE
+    const photoURL = await getDownloadURL(storageRef);
+    
+    // Update preview immediately
+    document.getElementById('profileAvatar').style.backgroundImage = `url('${photoURL}')`;
+    document.getElementById('profileAvatar').innerHTML = '';
+    
+    // Store URL for saving later - NEW CODE
+    document.getElementById('profileAvatar').dataset.tempPhoto = photoURL;
+    
+  } catch (error) {
+    alert('Upload failed: ' + error.message);
+    document.getElementById('profileAvatar').innerHTML = 
+      profile.name ? profile.name.charAt(0).toUpperCase() : '?';
+  }
+};
+
+
+// Remove photo handler - NEW CODE
+if (profile.photoURL) {
+  document.getElementById('removePhotoBtn').onclick = () => {
+    document.getElementById('profileAvatar').style.backgroundImage = '';
+    document.getElementById('profileAvatar').innerHTML = 
+      profile.name ? profile.name.charAt(0).toUpperCase() : '?';
+    document.getElementById('profileAvatar').dataset.tempPhoto = '';
+    document.getElementById('removePhotoBtn').remove();
   };
+}
+
+
+
+
+
+
+
+
+
+
 
   // Handle and save profile
-  document.getElementById('saveProfile').onclick = async () => {
-    const newName = document.getElementById('profileName').value.trim();
-    const selectedVibe = document.querySelector('input[name="profileVibe"]:checked')?.value;
 
-    if (!newName || !selectedVibe) {
-      alert('Please fill in both name and travel vibe');
-      return;
-    }
+// Handle and save profile
+document.getElementById('saveProfile').onclick = async () => {
+  const newName = document.getElementById('profileName').value.trim();
+  const selectedVibe = document.querySelector('input[name="profileVibe"]:checked')?.value;
 
-    try {
-      await setDoc(doc(db, "users", user.uid), {
-        name: newName,
-        vibe: [selectedVibe],
-        updatedAt: new Date()
-      }, { merge: true });
+  if (!newName || !selectedVibe) {
+    alert('Please fill in both name and travel vibe');
+    return;
+  }
 
-      // Update global profile
-      profile.name = newName;
-      profile.vibe = [selectedVibe];
+  try {
+    await setDoc(doc(db, "users", user.uid), {
+      name: newName,
+      vibe: [selectedVibe],
+      updatedAt: new Date()
+    }, { merge: true });
 
-      alert('Profile updated successfully!');
-    } catch(error) {
-      alert('Error updating profile: ' + error.message);
-    }
-  };
+    // Update global profile
+    profile.name = newName;
+    profile.vibe = [selectedVibe];
+
+    alert('Profile updated successfully!');
+  } catch(error) {
+    alert('Error updating profile: ' + error.message);
+  }
+};
+
+
 }
