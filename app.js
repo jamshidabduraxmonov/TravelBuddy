@@ -1,22 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
-// For the matching mechanism
-import { collection, query, where, getDocs, limit, orderBy} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
-// For real accepted match
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
-// For the messaging and listening for new messages
-import { addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
-// For login interface - onAuthStateChanged()
-import { getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
-// For profile picture storage
+import { collection, query, where, getDocs, limit, orderBy, doc, setDoc, addDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
-
 
 const firebaseConfig = {
   apiKey: "AIzaSyBUQd_x2mj0KO6V6QL6IpAlGS2c9R3btz8",
@@ -31,19 +17,24 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-// ADD THIS LINE after initializing auth and db
-const storage = getStorage(app); // New Line: Inititalizing Firebase Storage
-
-// EDIT: Add globals for user and profile to make them accessible in functions
+// Globals
 let user = null;
 let profile = null;
-
-// Tracks the current match ID for chat
 let currentChatMatchId = null;
+let feedCandidates = [];
+let currentCandidateIndex = 0;
+let lastVibe = null;
 
-// Replace your onAuthStateChanged with this final clean version
-onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid conflict
+// For Recorder
+let recorder = null;
+
+// For playing the audio
+let currentBlob = null;
+
+// Auth state
+onAuthStateChanged(auth, async (u) => {
   if (!u) {
     document.getElementById('app').innerHTML = `
       <div class="onboard">
@@ -56,7 +47,7 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
   }
 
   const snap = await getDoc(doc(db, "users", u.uid));
-  const p = snap.data() || {}; // EDIT: Change 'profile' to 'p' to avoid conflict
+  const p = snap.data() || {};
 
   if (!p.name || !p.vibe?.length) {
     document.getElementById('app').innerHTML = `
@@ -64,14 +55,12 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
         <h2>Almost there!</h2>
         <p>Tell us about you</p>
         <input id="name" placeholder="Your first name" class="input"><br><br>
-        
         <p><strong>Your travel vibe (pick 1–3)</strong></p>
         <div class="vibes">
           ${['Budget Explorer','Luxury Relaxer','Culture Seeker','Adrenaline Junkie'].map(v => `
             <label><input type="radio" name="vibe" value="${v}" required> ${v}</label><br>
           `).join('')}
         </div><br>
-        
         <button id="save" class="primary">Save & Find Buddies →</button>
       </div>`;
     
@@ -81,7 +70,7 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
         alert("Name + one travel vibe required");
         return;
       }
-      await setDoc(doc(db, "users", u.uid), { // EDIT: Use 'u.uid'
+      await setDoc(doc(db, "users", u.uid), {
         name: document.getElementById('name').value.trim(),
         vibe: [selected],
         updatedAt: new Date()
@@ -89,8 +78,8 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
       location.reload();
     };
   } else {
-    user = u; // EDIT: Set global user
-    profile = p; // EDIT: Set global profile
+    user = u;
+    profile = p;
 
     document.getElementById('app').innerHTML = `
       <div id="content"></div>
@@ -103,218 +92,552 @@ onAuthStateChanged(auth, async (u) => { // EDIT: Change 'user' to 'u' to avoid c
 
     const content = document.getElementById('content');
 
-    async function renderFeed() {
-      // Get current user's vibe array
-      const myVibe = profile.vibe;
-
-      // Query Firestore for users who share at least one vibe
-      const q = query(
-        collection(db, 'users'),
-        where("vibe", "array-contains-any", myVibe)
-      );
-
-      // Execute query and get snapshot
-      const snapshot = await getDocs(q);
-
-      // Build array of candidates (exclude self)
-      const candidates = [];
-      snapshot.forEach(doc => {
-        if(doc.id !== user.uid) {
-          candidates.push({ id: doc.id, ...doc.data() });
-        }
-      });
-
-      // Shuffle and take only 5
-      const five = candidates.sort(() => Math.random() - 0.5).slice(0, 5);
-
-      // Build full HTML string for the feed
-      let cardsHTML = '';
-      if (five.length === 0) {
-        cardsHTML = `<p>No matches yet. Tell friends to join!</p>`;
-      } else {
-        cardsHTML = five.map(p => `
-          <div class="card">
-            <h3>${p.name}</h3>
-            <p>Vibe: ${p.vibe.join(" • ")}</p>
-            <button class="like" data-id="${p.id}">Like</button>
-            <button class="pass" data-id="${p.id}">Pass</button>
-          </div>
-          `).join('');
+    // Navigation
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'feedBtn') {
+        document.getElementById('feedBtn').classList.add('active');
+        document.getElementById('inboxBtn').classList.remove('active');
+        document.getElementById('profileBtn').classList.remove('active');
+        renderFeed();
+      } else if (e.target.id === 'inboxBtn') {
+        document.getElementById('inboxBtn').classList.add('active');
+        document.getElementById('feedBtn').classList.remove('active');
+        document.getElementById('profileBtn').classList.remove('active');
+        renderInbox();
+      } else if (e.target.id === 'profileBtn') {
+        document.getElementById('inboxBtn').classList.remove('active');
+        document.getElementById('feedBtn').classList.remove('active');
+        document.getElementById('profileBtn').classList.add('active');
+        renderProfileSettings();
       }
+    });
 
-      // Render everything to content div (no separate feed div)
-      content.innerHTML = `
-      <div class="discovery">
-        <h2>Focus Five</h2>
-        ${cardsHTML}
-      </div>
-      `;
+    renderFeed();
+  }
+});
 
-      // Attach event listeners to Like/Pass buttons after render
-      document.querySelectorAll('.like').forEach(btn => {
-        btn.onclick = async () => {
-          const otherId = btn.dataset.id;
-          await startMatch(user.uid, otherId);
-          btn.parentElement.remove(); // remove the card on like
-        };
-      });
+// Feed
+async function renderFeed() {
+  content.innerHTML = `<div class="loading">Finding travel buddies...</div>`;
 
-      document.querySelectorAll('.pass').forEach(btn => {
-          btn.onclick = () => btn.parentElement.remove(); // remove card on pass
-      });
-    } 
+  const myVibe = profile.vibe;
+  const vibeChanged = lastVibe !== myVibe[0];
+  
+  if (feedCandidates.length === 0 || vibeChanged) {
+    const q = query(collection(db, 'users'), where("vibe", "array-contains-any", myVibe));
+    const snapshot = await getDocs(q);
 
-   async function renderInbox() {
-      // Query all matches where current user is in the users array
-      const matchesQuery = query(
-        collection(db, "matches"),
-        where("users", "array-contains", user.uid)
-      );
-
-      const matchesSnap = await getDocs(matchesQuery);
-
-        console.log("MATCHES FOUND:", matchesSnap.size); // ← ADD THIS
-  console.log("ALL MATCHES:", matchesSnap.docs.map(d => ({id: d.id, data: d.data()}))); // ← ADD THIS
-
-      if (matchesSnap.empty) {
-        content.innerHTML = `<p>No matches yet. Start liking in Discovery!</p>`;
-        return;
+    feedCandidates = [];
+    snapshot.forEach(doc => {
+      if(doc.id !== user.uid) {
+        feedCandidates.push({ id: doc.id, ...doc.data() });
       }
+    });
 
-      // For each match => get other person's name/vibe + last message
-      const matchPromises = matchesSnap.docs.map(async (matchDoc) => {
-        const data = matchDoc.data();
-        const otherId = data.users.find(id => id !== user.uid); // find the other person
-        const otherSnap = await getDoc(doc(db, "users", otherId));
-        const otherProfile = otherSnap.data();
+    // Shuffle once per vibe
+    for (let i = feedCandidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [feedCandidates[i], feedCandidates[j]] = [feedCandidates[j], feedCandidates[i]];
+    }
 
-          // ADD NULL CHECKS:
-          if (!otherProfile) {
-            return {
-              matchId: matchDoc.id,
-              name: "Unknown User",
-              vibe: "Unknown",
-              lastMsg: ""
-            };
-          }
+    currentCandidateIndex = 0;
+    lastVibe = myVibe[0];
+  }
 
-        // Get the very last message (most recent one)
-        const lastMsgSnap = await getDocs(
-          query(collection(db, "matches", matchDoc.id, "messages"), limit(1))
-        );
-        const lastMsg = lastMsgSnap.empty ? "" : lastMsgSnap.docs[0].data().text;
+  if (feedCandidates.length === 0) {
+    content.innerHTML = `<div class="no-matches"><h3>No matches yet</h3><p>Tell friends to join or check back later!</p></div>`;
+    return;
+  }
 
-        return {
-          matchId: matchDoc.id,
-          name: otherProfile.name || "Unknown User",
-          vibe: otherProfile.vibe?.[0] || "Unknown",
-          photoURL: otherProfile.photoURL || null, // NEW LINE: Include photo URL
-          lastMsg
-        };
-      });
+  const currentCandidate = feedCandidates[currentCandidateIndex];
+  
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'Not specified';
+    return new Date(dateStr).toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
 
-      const matches = await Promise.all(matchPromises);
+  content.innerHTML = `
+    <div class="discovery-single">
+      <div class="profile-card">
+        <div class="feed-profile-pic" 
+             style="${currentCandidate.photoURL ? `background-image: url('${currentCandidate.photoURL}')` : ''}">
+          ${!currentCandidate.photoURL ? currentCandidate.name?.charAt(0).toUpperCase() || '?' : ''}
+        </div>
+        
+        <div class="profile-header">
+          <h2>${currentCandidate.name || 'Traveler'}</h2>
+          <div class="vibe-badge">${currentCandidate.vibe?.[0] || 'Explorer'}</div>
+        </div>
 
-      // Set full HTML string for the inbox
-      content.innerHTML = `
-      <div class="inbox">
-        <h2>Your Matches</h2>
-        <div class="matches-list">
-          ${matches.map(m => `
-            <div class="match-item" data-matchid="${m.matchId}">
-              <div class="match-avatar" style="${m.photoURL ? `background-image:
-                url('${m.photoURL}')` : ''}"> <!-- NEW: Show photo -->
-                  ${!m.photoURL ? m.name.charAt(0).toUpperCase() : ''} <!-- CHANGED: Initial if no photo -->
-              </div>
-              <div class="match-content">
-                <strong>${m.name}</strong> <small>(${m.vibe})</small><br>
-                <small>${m.lastMsg || "No messages yet"}</small>
-              </div>
+        <div class="details-section">
+          <div class="detail-item">
+            <span class="detail-icon">📅</span>
+            <div>
+              <strong>Dubai Dates</strong>
+              <p>${currentCandidate.travelDates?.from ? 
+                `${formatDate(currentCandidate.travelDates.from)} - ${formatDate(currentCandidate.travelDates.to)}` : 
+                'Dates not set'}</p>
             </div>
+          </div>
+
+          ${currentCandidate.accommodation ? `
+          <div class="detail-item">
+            <span class="detail-icon">🏨</span>
+            <div>
+              <strong>Staying at</strong>
+              <p>${currentCandidate.accommodation}</p>
+            </div>
+          </div>` : ''}
+
+          ${currentCandidate.tripPurpose?.length ? `
+          <div class="detail-item">
+            <span class="detail-icon">🎯</span>
+            <div>
+              <strong>Trip Purpose</strong>
+              <p>${currentCandidate.tripPurpose.join(' • ')}</p>
+            </div>
+          </div>` : ''}
+
+          ${currentCandidate.dailyBudget ? `
+          <div class="detail-item">
+            <span class="detail-icon">💰</span>
+            <div>
+              <strong>Daily Budget</strong>
+              <p>${currentCandidate.dailyBudget}</p>
+            </div>
+          </div>` : ''}
+
+          ${currentCandidate.languages?.length ? `
+          <div class="detail-item">
+            <span class="detail-icon">🗣️</span>
+            <div>
+              <strong>Languages</strong>
+              <p>${currentCandidate.languages.join(', ')}</p>
+            </div>
+          </div>` : ''}
+        </div>
+
+        ${currentCandidate.icebreaker ? `
+        <div class="icebreaker">
+          <strong>💬 Says:</strong>
+          <p>"${currentCandidate.icebreaker}"</p>
+        </div>` : ''}
+
+        <div class="audio-section">
+          <h4>Voice Answers</h4>
+          <p class="coming-soon">🎤 Audio feature coming soon!</p>
+        </div>
+
+        <div class="action-buttons">
+          <button class="pass-btn" data-id="${currentCandidate.id}">✗ Pass</button>
+          <button class="like-btn" data-id="${currentCandidate.id}">♥ Like</button>
+        </div>
+      </div>
+
+      <div class="candidate-counter">
+        ${feedCandidates.length - currentCandidateIndex - 1} more travel buddies to discover
+      </div>
+    </div>
+  `;
+
+  document.querySelector('.pass-btn').onclick = () => {
+    currentCandidateIndex++;
+    if (currentCandidateIndex >= feedCandidates.length) {
+      currentCandidateIndex = 0;
+      feedCandidates = [];
+    }
+    renderFeed();
+  };
+
+  document.querySelector('.like-btn').onclick = async () => {
+    const otherId = currentCandidate.id;
+    await startMatch(user.uid, otherId);
+    alert(`You liked ${currentCandidate.name}! Check your inbox for matches.`);
+    
+    currentCandidateIndex++;
+    if (currentCandidateIndex >= feedCandidates.length) {
+      content.innerHTML = `
+        <div class="no-matches">
+          <h3>Match made! 🎉</h3>
+          <p>Check your inbox to start chatting.</p>
+        </div>`;
+      feedCandidates = [];
+    } else {
+      renderFeed();
+    }
+  };
+}
+
+// Inbox
+async function renderInbox() {
+  const matchesQuery = query(collection(db, "matches"), where("users", "array-contains", user.uid));
+  const matchesSnap = await getDocs(matchesQuery);
+
+  if (matchesSnap.empty) {
+    content.innerHTML = `<p>No matches yet. Start liking in Discovery!</p>`;
+    return;
+  }
+
+  const matchPromises = matchesSnap.docs.map(async (matchDoc) => {
+    const data = matchDoc.data();
+    const otherId = data.users.find(id => id !== user.uid);
+    const otherSnap = await getDoc(doc(db, "users", otherId));
+    const otherProfile = otherSnap.data();
+
+    if (!otherProfile) {
+      return {
+        matchId: matchDoc.id,
+        name: "Unknown User",
+        vibe: "Unknown",
+        photoURL: null,
+        lastMsg: ""
+      };
+    }
+
+    const lastMsgSnap = await getDocs(query(collection(db, "matches", matchDoc.id, "messages"), limit(1)));
+    const lastMsg = lastMsgSnap.empty ? "" : lastMsgSnap.docs[0].data().text;
+
+    return {
+      matchId: matchDoc.id,
+      name: otherProfile.name || "Unknown User",
+      vibe: otherProfile.vibe?.[0] || "Unknown",
+      photoURL: otherProfile.photoURL || null,
+      lastMsg
+    };
+  });
+
+  const matches = await Promise.all(matchPromises);
+
+  content.innerHTML = `
+    <div class="inbox">
+      <h2>Your Matches</h2>
+      <div class="matches-list">
+        ${matches.map(m => `
+          <div class="match-item" data-matchid="${m.matchId}">
+            <div class="match-avatar" style="${m.photoURL ? `background-image: url('${m.photoURL}')` : ''}">
+              ${!m.photoURL ? m.name.charAt(0).toUpperCase() : ''}
+            </div>
+            <div class="match-content">
+              <strong>${m.name}</strong> <small>(${m.vibe})</small><br>
+              <small>${m.lastMsg || "No messages yet"}</small>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  document.querySelectorAll('.match-item').forEach(item => {
+    item.addEventListener('click', () => openChat(item.dataset.matchid));
+  });
+}
+
+// Profile Settings
+
+async function renderProfileSettings() {
+  content.innerHTML = `
+    <div class="profile-settings">
+      <h2>Complete Your Profile</h2>
+      
+      <div class="profile-picture-section">
+        <div class="profile-avatar" id="profileAvatar" 
+             style="${profile.photoURL ? `background-image: url('${profile.photoURL}')` : ''}">
+          ${!profile.photoURL && profile.name ? profile.name.charAt(0).toUpperCase() : ''}
+        </div>
+        <input type="file" id="profilePhoto" accept="image/*" style="display: none;">
+        <button id="uploadPhotoBtn" class="change-photo-btn">
+          ${profile.photoURL ? 'Change Photo' : 'Upload Photo'}
+        </button>
+        ${profile.photoURL ? '<button id="removePhotoBtn" class="remove-btn">Remove Photo</button>' : ''}
+      </div>
+
+      <div class="setting-group">
+        <label>Your Name *</label>
+        <input type="text" id="profileName" value="${profile.name || ''}" placeholder="First name">
+      </div>
+
+      <div class="setting-group">
+        <label>Your Travel Vibe *</label>
+        <div class="vibe-options">
+          ${['Budget Explorer', 'Luxury Relaxer', 'Culture Seeker', 'Adrenaline Junkie']
+            .map(vibe => `
+              <label class="vibe-option">
+                <input type="radio" name="profileVibe" value="${vibe}" 
+                  ${profile.vibe && profile.vibe.includes(vibe) ? 'checked' : ''}>
+                ${vibe}
+              </label>
             `).join('')}
         </div>
       </div>
-      `;
 
-      document.querySelectorAll('.match-item').forEach(item => {
-        item.addEventListener('click', () => openChat(item.dataset.matchid));
-      });
-  }
+      <div class="setting-group">
+        <label>Your Dubai Dates *</label>
+        <div class="date-inputs">
+          <input type="date" id="dateFrom" value="${profile.travelDates?.from || ''}" placeholder="From">
+          <span>to</span>
+          <input type="date" id="dateTo" value="${profile.travelDates?.to || ''}" placeholder="To">
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label>Where are you staying?</label>
+        <input type="text" id="accommodation" value="${profile.accommodation || ''}" 
+               placeholder="Hotel name or area (e.g., Rove Downtown, Marina)">
+      </div>
+
+      <div class="setting-group">
+        <label>What brings you to Dubai? (pick 1-3)</label>
+        <div class="checkbox-options">
+          ${['Sightseeing', 'Food & Dining', 'Shopping', 'Adventure', 'Business', 'Relaxation', 'Photography']
+            .map(purpose => `
+              <label class="checkbox-option">
+                <input type="checkbox" value="${purpose}" 
+                  ${profile.tripPurpose?.includes(purpose) ? 'checked' : ''}>
+                ${purpose}
+              </label>
+            `).join('')}
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label>Daily Spending Range (AED)</label>
+        <select id="dailyBudget">
+          <option value="" ${!profile.dailyBudget ? 'selected' : ''}>Select range</option>
+          <option value="Under 200" ${profile.dailyBudget === 'Under 200' ? 'selected' : ''}>Under 200 AED</option>
+          <option value="200-500" ${profile.dailyBudget === '200-500' ? 'selected' : ''}>200-500 AED</option>
+          <option value="500-1000" ${profile.dailyBudget === '500-1000' ? 'selected' : ''}>500-1000 AED</option>
+          <option value="1000+" ${profile.dailyBudget === '1000+' ? 'selected' : ''}>1000+ AED</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label>Languages you speak</label>
+        <div class="checkbox-options">
+          ${['English', 'Arabic', 'Hindi/Urdu', 'Russian', 'French', 'Spanish', 'Other']
+            .map(lang => `
+              <label class="checkbox-option">
+                <input type="checkbox" value="${lang}" 
+                  ${profile.languages?.includes(lang) ? 'checked' : ''}>
+                ${lang}
+              </label>
+            `).join('')}
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label>Your Icebreaker *</label>
+        <textarea id="icebreaker" placeholder="What makes you a great travel buddy? (e.g., 'I know all the best shawarma spots!')">${profile.icebreaker || ''}</textarea>
+        <small>This appears on your profile</small>
+      </div>
 
 
 
-    // WITH this:
-document.addEventListener('click', (e) => {
-  if (e.target.id === 'feedBtn') {
-    document.getElementById('feedBtn').classList.add('active');
-    document.getElementById('inboxBtn').classList.remove('active');
-    document.getElementById('profileBtn').classList.remove('active');
-    renderFeed();
-  } else if (e.target.id === 'inboxBtn') {
-    document.getElementById('inboxBtn').classList.add('active');
-    document.getElementById('feedBtn').classList.remove('active');
-    document.getElementById('profileBtn').classList.remove('active');
-    renderInbox();
-  } else if (e.target.id === 'profileBtn') {
-    document.getElementById('inboxBtn').classList.remove('active');
-    document.getElementById('feedBtn').classList.remove('active');
-    document.getElementById('profileBtn').classList.add('active');
-    renderProfileSettings();
-  }
 
-});
+<!-- Voice Questions Section -->
+<div class="setting-group">
+  <label>Voice Answers (30 seconds each)</label>
+  
+  <div id="voiceQuestionsContainer">
+    <!-- Question 1 -->
+    <div class="voice-question" data-q="1">
+      <div class="question-header">
+        <strong>🎤 1. What's your favorite travel memory?</strong>
+        <span class="question-status" data-status="empty">Not recorded</span>
+      </div>
+      
+      <div class="voice-controls">
+        <button class="record-btn" data-action="record">🎤 Record</button>
+        <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
+        <button class="play-btn" data-action="play" disabled>▶️ Play</button>
+        <button class="save-btn" data-action="save" disabled>✅ Save</button>
+        <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
+        
+        <span class="timer">00:30</span>
+      </div>
+      
+      <div class="recording-status">
+        <small class="status-text">Press Record to start</small>
+        <div class="waveform"></div>
+      </div>
+    </div>
+
+    <!-- Question 2 -->
+    <div class="voice-question" data-q="2">
+      <div class="question-header">
+        <strong>🎤 2. Why do you want a travel buddy in Dubai?</strong>
+        <span class="question-status" data-status="empty">Not recorded</span>
+      </div>
+      
+      <div class="voice-controls">
+        <button class="record-btn" data-action="record">🎤 Record</button>
+        <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
+        <button class="play-btn" data-action="play" disabled>▶️ Play</button>
+        <button class="save-btn" data-action="save" disabled>✅ Save</button>
+        <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
+        
+        <span class="timer">00:30</span>
+      </div>
+      
+      <div class="recording-status">
+        <small class="status-text">Press Record to start</small>
+        <div class="waveform"></div>
+      </div>
+    </div>
+
+    <!-- Question 3 -->
+    <div class="voice-question" data-q="3">
+      <div class="question-header">
+        <strong>🎤 3. Describe your ideal day in Dubai in 3 sentences</strong>
+        <span class="question-status" data-status="empty">Not recorded</span>
+      </div>
+      
+      <div class="voice-controls">
+        <button class="record-btn" data-action="record">🎤 Record</button>
+        <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
+        <button class="play-btn" data-action="play" disabled>▶️ Play</button>
+        <button class="save-btn" data-action="save" disabled>✅ Save</button>
+        <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
+        
+        <span class="timer">00:30</span>
+      </div>
+      
+      <div class="recording-status">
+        <small class="status-text">Press Record to start</small>
+        <div class="waveform"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 
 
 
-    // EDIT: Start on Feed
-    renderFeed();
-  }
-});
 
+      <button id="saveProfile" class="save-btn">Save & Continue</button>
 
+      <button class="startRecord">Start Record</button>
+      <button class="stopRecord">Stop Record</button>
+      <button class="playRecord">Play Record</button>
+    </div>
+  `;
 
- // OPENCHAT !!!
-  function openChat(matchId) {
-    currentChatMatchId = matchId; // Set the selected match ID
-    document.getElementById('inboxBtn').classList.add('active');
-    document.getElementById('feedBtn').classList.remove('active');
-    document.getElementById('profileBtn').classList.remove('active');
+  // Photo handlers
+  document.getElementById('uploadPhotoBtn').onclick = () => 
+    document.getElementById('profilePhoto').click();
 
-    renderChat(matchId);
+  document.getElementById('profilePhoto').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    console.log("Opening chat with", matchId);
-  }
-
-
-
-// Function to render chats
-async function renderChat(matchId) {
-  if(!matchId) {
-
-    return;
+    document.getElementById('profileAvatar').innerHTML = '⏳';
+    
+    try {
+      const storageRef = ref(storage, `profile-pics/${user.uid}`);
+      await uploadBytes(storageRef, file);
+      const photoURL = await getDownloadURL(storageRef);
+      
+      document.getElementById('profileAvatar').style.backgroundImage = `url('${photoURL}')`;
+      document.getElementById('profileAvatar').innerHTML = '';
+      document.getElementById('profileAvatar').dataset.tempPhoto = photoURL;
+    } catch (error) {
+      alert('Upload failed: ' + error.message);
+      document.getElementById('profileAvatar').innerHTML = 
+        profile.name ? profile.name.charAt(0).toUpperCase() : '?';
+    }
   };
 
-  
-  // Keep inbox button active while in chat
+  if (profile.photoURL) {
+    document.getElementById('removePhotoBtn').onclick = () => {
+      document.getElementById('profileAvatar').style.backgroundImage = '';
+      document.getElementById('profileAvatar').innerHTML = 
+        profile.name ? profile.name.charAt(0).toUpperCase() : '?';
+      document.getElementById('profileAvatar').dataset.tempPhoto = '';
+      document.getElementById('removePhotoBtn').remove();
+    };
+  }
+
+  // Save handler
+  document.getElementById('saveProfile').onclick = async () => {
+    const newName = document.getElementById('profileName').value.trim();
+    const selectedVibe = document.querySelector('input[name="profileVibe"]:checked')?.value;
+    const tempPhotoURL = document.getElementById('profileAvatar').dataset.tempPhoto;
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const accommodation = document.getElementById('accommodation').value.trim();
+    
+    const tripPurpose = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
+                            .map(cb => cb.value);
+    const languages = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
+                          .map(cb => cb.value);
+    const dailyBudget = document.getElementById('dailyBudget').value;
+    const icebreaker = document.getElementById('icebreaker').value.trim();
+
+    if (!newName || !selectedVibe || !dateFrom || !dateTo || !icebreaker) {
+      alert('Please fill all required fields (*)');
+      return;
+    }
+
+    try {
+      const updateData = {
+        name: newName,
+        vibe: [selectedVibe],
+        travelDates: { from: dateFrom, to: dateTo },
+        accommodation,
+        tripPurpose,
+        dailyBudget,
+        languages,
+        icebreaker,
+        updatedAt: new Date()
+      };
+
+      if (tempPhotoURL) {
+        updateData.photoURL = tempPhotoURL;
+      }
+
+      await setDoc(doc(db, "users", user.uid), updateData, { merge: true });
+
+      Object.assign(profile, updateData);
+      if (tempPhotoURL) profile.photoURL = tempPhotoURL;
+
+      alert('Profile updated!');
+      renderFeed();
+      document.getElementById('feedBtn').click();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+}
+
+// Chat
+function openChat(matchId) {
+  currentChatMatchId = matchId;
+  document.getElementById('inboxBtn').classList.add('active');
+  document.getElementById('feedBtn').classList.remove('active');
+  document.getElementById('profileBtn').classList.remove('active');
+  renderChat(matchId);
+}
+
+async function renderChat(matchId) {
+  if(!matchId) return;
+
   document.getElementById('inboxBtn').classList.add('active');
   document.getElementById('feedBtn').classList.remove('active');
   document.getElementById('profileBtn').classList.remove('active');
 
-
   content.innerHTML = `
     <div class="chat">
-      <h2 style="padding: 16px; margin: 0; background: white; border-bottom: 1px solid #e0e0e0;" >Chat</h2>
+      <h2 style="padding: 16px; margin: 0; background: white; border-bottom: 1px solid #e0e0e0;">Chat</h2>
       <div id="messages"></div>
       <div class="chat-input">
-          <input id="msg" placeholder="Type message">
-          <button id="send">Send</button>
+        <input id="msg" placeholder="Type message">
+        <button id="send">Send</button>
       </div>
-    
     </div>
   `;
 
-  // In renderChat(), after content.innerHTML:
   setTimeout(() => document.getElementById('msg').focus(), 100);
   
   const messagesDiv = document.getElementById('messages');
@@ -322,262 +645,100 @@ async function renderChat(matchId) {
   onSnapshot(query(
     collection(db, "matches", matchId, "messages"),
     orderBy("timestamp", "asc")
-  ), 
-    snap => {
+  ), snap => {
     messagesDiv.innerHTML = snap.docs.map(d => {
       const m = d.data();
-      const isMe = m.sender === user.uid; // Check if sent by current user
-      return `<div class="${isMe ? 'me' : 'other'}">${m.text}</div>`; // Style as me or other
-    }).join(''); // Join all message HTML into one string
-    messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to bottom for new messages
+      const isMe = m.sender === user.uid;
+      return `<div class="${isMe ? 'me' : 'other'}">${m.text}</div>`;
+    }).join('');
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
   });
 
   document.getElementById('send').onclick = async () => {
     const msg = document.getElementById('msg').value.trim();
     if(msg) {
-      await sendMessage(matchId, msg); // Call your sendMessage function
-      document.getElementById('msg').value = ''; // Clear Input
+      await sendMessage(matchId, msg);
+      document.getElementById('msg').value = '';
     }
   };
 }
 
-
-
-
-
-
-
-
-// This is matching brain
-async function findMatches(myVibe) {
-    const q = query(
-        collection(db, "users"),
-        where("vibe", "array-contains-any", myVibe)
-    );
-
-    const snapshot = await getDocs(q);
-    const matches = [];
-
-    snapshot.forEach(doc => {
-        const data = doc.data();
-        if (doc.id !== auth.currentUser.uid) { // don't match yourself
-            matches.push({ id: doc.id, ...data });
-        }
-    });
-
-    console.log("Your real matches:", matches);
-    return matches;
-}
-
-
-// Create real match when two users accept each other
+// Utility functions
 async function startMatch(userId1, userId2) {
-    const matchId = `${userId1}_${userId2}`;
-    await setDoc(doc(db, "matches", matchId), {
-        users: [userId1, userId2],
-        status: "active",
-        createdAt: new Date()
-    });
-    console.log("Match created:", matchId);
-
-    
+  const matchId = `${userId1}_${userId2}`;
+  await setDoc(doc(db, "matches", matchId), {
+    users: [userId1, userId2],
+    status: "active",
+    createdAt: new Date()
+  });
+  console.log("Match created:", matchId);
 }
 
-// To make it visible in the browser and make it global
-    window.startMatch = startMatch;
-
-
-
-
-// Send message (My version)
 async function sendMessage(matchId, text) {
-    const matchDocRef = doc(db, "matches", matchId); // get reference to the parent match document
-    const messagesCollectionRef = collection(matchDocRef, "messages"); // get the reference to the subcollection
-
-
-    await addDoc( messagesCollectionRef, {
-        text,
-        sender: auth.currentUser.uid,
-        timestamp: new Date()
-    });
-    console.log("Message sent to match:", matchId);
+  const matchDocRef = doc(db, "matches", matchId);
+  const messagesCollectionRef = collection(matchDocRef, "messages");
+  await addDoc(messagesCollectionRef, {
+    text,
+    sender: auth.currentUser.uid,
+    timestamp: new Date()
+  });
+  console.log("Message sent to match:", matchId);
 }
 
-
-
-
-
-// Listen for new messages (real-time)
 function listenToChat(matchId) {
-    const messagesRef = collection(db, "matches", matchId, "messages");
-    onSnapshot(messagesRef, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if(change.type === "added") {
-                console.log("New message:", change.doc.data());
-            }
-        });
+  const messagesRef = collection(db, "matches", matchId, "messages");
+  onSnapshot(messagesRef, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if(change.type === "added") {
+        console.log("New message:", change.doc.data());
+      }
     });
+  });
 }
 
-// To make it global
-    window.sendMessage = sendMessage;
-    window.listenToChat = listenToChat;
+// Make global
+window.startMatch = startMatch;
+window.sendMessage = sendMessage;
+window.listenToChat = listenToChat;
 
 
 
-
-
-
-
-
-// Profile page functions and code
-async function renderProfileSettings() {
-  content.innerHTML = `
-    <div class="profile-settings">
-      <h2>Profile Settings</h2>
-
-      <!-- Profile Picture Section -->
-      <div class="profile-picture-section">
-        <div class="profile-avatar" id="profileAvatar"
-            style="${profile.photoURL ? `background-image: url('${profile.photoURL}')`: ''
-          }"> <!-- ADDED: Show existing photo -->
-            ${!profile.photoURL && profile.name ? 
-              profile.name.charAt(0).toUpperCase() : ''} <!-- CHANGED: Only initial if no photo -->
-        </div>
-        <input type="file" id="profilePhoto" accept="image/*" style="display:none;">
-        <button id="uploadPhotoBtn" class="change-photo-btn">
-          ${profile.photoURL ? 'Change Photo' : 'Upload Photo'} <!-- CHANGED: Dynamic button text -->
-        </button> 
-        ${profile.photoURL ? '<button id="removePhotoBtn" class="remove-btn">Remove Photo</button>' : ''} <!-- NEW: Remove button -->
-      </div>
-
-
-
-
-      <!-- Name Section -->
-      <div class="setting-group">
-        <label>Your Name</label>
-        <input type="text" id="profileName" value="${profile.name || ''}" placeholder="Enter your name">
-      </div>
-
-      <!-- Vibe Section -->
-      <div class="setting-group">
-        <label>Your Travel Vibe</label>
-        <div class="vibe-options">
-          ${['Budget Explorer', 'Luxury Relaxer', 'Culture Seker', 'Adrenaline Junkie']
-            .map(vibe => `
-               <label class="vibe-option">
-                <input type='radio' name="profileVibe" value="${vibe}"
-                  ${profile.vibe && profile.vibe.includes(vibe) ? 'checked' : ''}>
-                ${vibe}
-               </label>
-              `).join('')}
-        </div>
-      </div>
-
-      <!-- Save Button -->
-      <button id="saveProfile" class="save-btn">Save Changes</button>
-    </div>
-  `;
-
-  // Handle profile photo upload (basic version)
-  
-
-// REPLACE your current photo handler with this:
-
-// Upload photo handler - NEW CODE
-document.getElementById('uploadPhotoBtn').onclick = () => 
-  document.getElementById('profilePhoto').click();
-
-document.getElementById('profilePhoto').onchange = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  // Show loading
-  document.getElementById('profileAvatar').innerHTML = '⏳';
-  
-  try {
-    // Upload to Firebase Storage - NEW CODE
-    const storageRef = ref(storage, `profile-pics/${user.uid}`);
-    await uploadBytes(storageRef, file);
+// Your existing event listener - UPDATED:
+document.addEventListener('click', async (event) => {
     
-    // Get download URL - NEW CODE
-    const photoURL = await getDownloadURL(storageRef);
+    if (event.target.closest('.startRecord')) {
+        event.preventDefault();
+        
+        // FIX: Pass user.uid to constructor
+        recorder = new VoiceRecorder(user.uid); // ← ADD user.uid
+        const started = await recorder.start();
+        console.log(started ? "Recording ..." : "Failed");
+    } 
     
-    // Update preview immediately
-    document.getElementById('profileAvatar').style.backgroundImage = `url('${photoURL}')`;
-    document.getElementById('profileAvatar').innerHTML = '';
-    
-    // Store URL for saving later - NEW CODE
-    document.getElementById('profileAvatar').dataset.tempPhoto = photoURL;
-    
-  } catch (error) {
-    alert('Upload failed: ' + error.message);
-    document.getElementById('profileAvatar').innerHTML = 
-      profile.name ? profile.name.charAt(0).toUpperCase() : '?';
-  }
-};
-
-
-// Remove photo handler - NEW CODE
-if (profile.photoURL) {
-  document.getElementById('removePhotoBtn').onclick = () => {
-    document.getElementById('profileAvatar').style.backgroundImage = '';
-    document.getElementById('profileAvatar').innerHTML = 
-      profile.name ? profile.name.charAt(0).toUpperCase() : '?';
-    document.getElementById('profileAvatar').dataset.tempPhoto = '';
-    document.getElementById('removePhotoBtn').remove();
-  };
-}
-
-
-
-
-
-
-
-
-
-
-
-  // Handle and save profile
-
-// Handle and save profile
-document.getElementById('saveProfile').onclick = async () => {
-  const newName = document.getElementById('profileName').value.trim();
-  const selectedVibe = document.querySelector('input[name="profileVibe"]:checked')?.value;
-  const tempPhotoURL = document.getElementById('profileAvatar').dataset.tempPhoto; // ← ADD THIS LINE
-
-  if (!newName || !selectedVibe) {
-    alert('Please fill in both name and travel vibe');
-    return;
-  }
-
-  try {
-    // Build update data
-    const updateData = {
-      name: newName,
-      vibe: [selectedVibe],
-      updatedAt: new Date()
-    };
-    
-    // ADD PHOTOURL IF EXISTS
-    if (tempPhotoURL) {
-      updateData.photoURL = tempPhotoURL; // ← THIS IS THE MISSING LINE!
+    else if (event.target.closest('.stopRecord')) {
+        event.preventDefault(); 
+        
+        if (recorder) {
+            // FIX: Store blob in currentBlob variable
+            currentBlob = await recorder.stop(); // ← STORE blob
+            const url = await recorder.upload(currentBlob, 1); // q1
+            console.log("Audio URL:", url);
+            // Don't set recorder = null if you want to play later
+        }
     }
+    
+    else if (event.target.closest('.playRecord')) {
+      event.preventDefault(); 
 
-    await setDoc(doc(db, "users", user.uid), updateData, { merge: true }); // ← Use updateData
-
-    // Update global profile
-    profile.name = newName;
-    profile.vibe = [selectedVibe];
-    if (tempPhotoURL) profile.photoURL = tempPhotoURL; // ← ALSO UPDATE GLOBAL PROFILE
-
-    alert('Profile updated successfully!');
-  } catch(error) {
-    alert('Error updating profile: ' + error.message);
-  }
-};
+      // FIX: Check currentBlob exists
+      if (currentBlob && recorder) { // ← recorder still exists
+            recorder.play(currentBlob);
+      } else {
+            console.log("No audio to play. Record first!");
+      }
+    }
+});
 
 
-}
+
+
