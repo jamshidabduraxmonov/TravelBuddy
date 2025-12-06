@@ -19,6 +19,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+
+
 // Globals
 let user = null;
 let profile = null;
@@ -26,12 +28,44 @@ let currentChatMatchId = null;
 let feedCandidates = [];
 let currentCandidateIndex = 0;
 let lastVibe = null;
-
 // For Recorder
 let recorder = null;
-
 // For playing the audio
 let currentBlob = null;
+
+
+
+
+
+// ==============================================
+// PHASE 1: VOICE STATE LAYER
+// ==============================================
+// Each question has its own isolated state
+// This prevents questions from interfering with each other
+// ==============================================
+
+// voiceState object tracks ALL 3 questions independently
+// Structure for EACH question (1, 2, 3):
+// - recording: boolean (true when microphone is active)
+// - blob:      Audio blob (temporary, exists after recording until saved/deleted)
+// - url:       Firebase Storage URL (permanent, exists after saving)
+const voiceState = {
+  1: { recording: false, blob: null, url: null },
+  2: { recording: false, blob: null, url: null },
+  3: { recording: false, blob: null, url: null }
+};
+
+// Single recorder engine - shared by all 3 questions
+// We initialize this LATER when we have user data (in renderProfileSettings)
+let voiceRecorder = null;
+
+// Timer tracking - each question can have its own countdown
+const voiceTimers = {};
+
+
+
+
+
 
 // Auth state
 onAuthStateChanged(auth, async (u) => {
@@ -524,6 +558,59 @@ async function renderProfileSettings() {
     </div>
   `;
 
+
+
+
+
+
+
+  // ==============================================
+// 3.1 MAIN EVENT LISTENER (Event Delegation)
+// ==============================================
+// ONE listener handles ALL buttons for ALL 3 questions
+// More efficient than attaching 15 separate listeners
+document.getElementById('voiceQuestionsContainer').addEventListener('click', async (e) => {
+  // 1. Find which button was clicked
+  const button = e.target.closest('button');
+  if (!button) return; // Click wasn't on a button
+  
+  // 2. Find which question this button belongs to
+  const questionEl = button.closest('.voice-question');
+  const qNumber = parseInt(questionEl.dataset.q); // Convert "1" → 1
+  const action = button.dataset.action; // "record", "stop", "play", "save", "delete"
+  
+  console.log(`Voice action: Q${qNumber} - ${action}`);
+  
+  // 3. Route to the appropriate handler
+  switch (action) {
+    case 'record':
+      await handleRecord(qNumber);
+      break;
+    case 'stop':
+      await handleStop(qNumber);
+      break;
+    case 'play':
+      await handlePlay(qNumber);
+      break;
+    case 'save':
+      await handleSave(qNumber);
+      break;
+    case 'delete':
+      await handleDelete(qNumber);
+      break;
+  }
+  
+  // 4. Update UI to reflect new state
+  updateQuestionUI(qNumber);
+});
+
+
+
+
+
+
+
+
   // Photo handlers
   document.getElementById('uploadPhotoBtn').onclick = () => 
     document.getElementById('profilePhoto').click();
@@ -609,7 +696,481 @@ async function renderProfileSettings() {
       alert('Error: ' + error.message);
     }
   };
+
+
+
+
+  // ==============================================
+// PHASE 5: INITIALIZATION
+// ==============================================
+// Activates the voice system when profile page loads
+// ==============================================
+
+// INSIDE renderProfileSettings() function, AT THE END:
+
+  // ... all your existing profile page code ...
+  // ... photo handlers, save button handler, etc ...
+
+  // ==============================================
+  // 5.1 INITIALIZE VOICE RECORDER ENGINE
+  // ==============================================
+  // Create the recorder instance now that we have user data
+  voiceRecorder = new VoiceRecorder(user.uid, app);
+  console.log("Voice recorder initialized for user:", user.uid);
+
+  // ==============================================
+  // 5.2 LOAD SAVED ANSWERS FROM PROFILE
+  // ==============================================
+  // Check if user has previously saved voice answers
+  if (profile.voiceAnswers) {
+    console.log("Loading saved voice answers:", profile.voiceAnswers);
+    
+    // Load each question's saved URL if it exists
+    voiceState[1].url = profile.voiceAnswers.q1 || null;
+    voiceState[2].url = profile.voiceAnswers.q2 || null;
+    voiceState[3].url = profile.voiceAnswers.q3 || null;
+  }
+
+  // ==============================================
+  // 5.3 INITIALIZE UI FOR ALL QUESTIONS
+  // ==============================================
+  // Wait a tiny bit for HTML to render, then update all questions
+  setTimeout(() => {
+    console.log("Initializing UI for questions 1, 2, 3");
+    [1, 2, 3].forEach(q => {
+      updateQuestionUI(q);
+    });
+  }, 100); // 100ms delay ensures HTML is ready
+
+  // ==============================================
+  // 5.4 CLEANUP ON PAGE EXIT (Optional but good practice)
+  // ==============================================
+  // Stop any recording if user leaves profile page
+  window.addEventListener('beforeunload', () => {
+    [1, 2, 3].forEach(q => {
+      if (voiceState[q].recording) {
+        console.log(`Stopping recording for Q${q} before page change`);
+        voiceRecorder.stopRecording(q);
+      }
+    });
+  });
+
+  // ==============================================
+  // 5.5 DEBUG LOGGING (Remove in production)
+  // ==============================================
+  console.log("Voice system fully initialized. State:", voiceState);
+} // ← This is the FINAL closing brace of renderProfileSettings()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ==============================================
+// PHASE 2: UI UPDATE FUNCTION
+// ==============================================
+// Updates ALL buttons/display for ONE question based on its state
+// Called after EVERY state change (record, stop, save, delete)
+// ==============================================
+
+/**
+ * Updates the UI for a specific question based on its voiceState
+ * @param {number} qNumber - Question number (1, 2, or 3)
+ */
+function updateQuestionUI(qNumber) {
+  // 1. Get the current state for this question
+  const state = voiceState[qNumber];
+  
+  // 2. Find the HTML element for this question
+  const questionEl = document.querySelector(`.voice-question[data-q="${qNumber}"]`);
+  if (!questionEl) return; // Safety check
+  
+  // 3. Get ALL button elements for this question
+  const recordBtn = questionEl.querySelector('.record-btn');
+  const stopBtn = questionEl.querySelector('.stop-btn');
+  const playBtn = questionEl.querySelector('.play-btn');
+  const saveBtn = questionEl.querySelector('.save-btn');
+  const deleteBtn = questionEl.querySelector('.delete-btn');
+  const statusEl = questionEl.querySelector('.question-status');
+  const timerEl = questionEl.querySelector('.timer');
+
+  // 4. RESET ALL BUTTONS TO DEFAULT
+  recordBtn.disabled = false;
+  stopBtn.disabled = true;
+  playBtn.disabled = true;
+  saveBtn.disabled = true;
+  deleteBtn.disabled = true;
+  
+  // Show all buttons initially (we'll hide some based on state)
+  recordBtn.style.display = 'inline-block';
+  stopBtn.style.display = 'inline-block';
+  playBtn.style.display = 'inline-block';
+  saveBtn.style.display = 'inline-block';
+  deleteBtn.style.display = 'inline-block';
+
+  // ==============================================
+  // STATE 1: RECORDING (microphone is active)
+  // ==============================================
+  if (state.recording) {
+    // UI: Show only STOP button
+    recordBtn.style.display = 'none';
+    stopBtn.disabled = false; // Enable stop button
+    
+    // Update status display
+    statusEl.textContent = 'Recording...';
+    statusEl.dataset.status = 'recording';
+    
+    return; // Stop here - recording state overrides everything
+  }
+
+  // ==============================================
+  // STATE 2: HAS DRAFT BLOB (recorded but not saved)
+  // ==============================================
+  if (state.blob) {
+    // UI: Show Record (as "Re-record"), Play, Save, Delete
+    recordBtn.textContent = '🔄 Re-record';
+    playBtn.disabled = false;  // Enable play
+    saveBtn.disabled = false;  // Enable save
+    deleteBtn.disabled = false; // Enable delete
+    stopBtn.style.display = 'none'; // Hide stop button
+    
+    // Update status
+    statusEl.textContent = 'Draft ready';
+    statusEl.dataset.status = 'draft';
+  }
+  
+  // ==============================================
+  // STATE 3: HAS SAVED URL (already uploaded to Firebase)
+  // ==============================================
+  else if (state.url) {
+    // UI: Show Record (as "Re-record"), Play saved version, Delete saved
+    recordBtn.textContent = '🔄 Re-record';
+    playBtn.disabled = false;
+    playBtn.textContent = '▶️ Play Saved';
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = '🗑️ Delete Saved';
+    
+    // Hide buttons that don't apply to saved state
+    stopBtn.style.display = 'none';
+    saveBtn.style.display = 'none';
+    
+    // Update status
+    statusEl.textContent = '✅ Saved';
+    statusEl.dataset.status = 'saved';
+  }
+  
+  // ==============================================
+  // STATE 4: EMPTY (no recording, no saved answer)
+  // ==============================================
+  else {
+    // UI: Show only Record button
+    recordBtn.textContent = '🎤 Record';
+    stopBtn.style.display = 'none';
+    playBtn.style.display = 'none';
+    saveBtn.style.display = 'none';
+    deleteBtn.style.display = 'none';
+    
+    // Update status
+    statusEl.textContent = 'Not recorded';
+    statusEl.dataset.status = 'empty';
+  }
+  
+  // Reset timer display
+  if (timerEl) timerEl.textContent = '00:30';
 }
+
+
+
+
+
+
+
+
+
+// ==============================================
+// PHASE 3: EVENT HANDLERS
+// ==============================================
+// Handles ALL button clicks for voice questions
+// Uses event delegation - ONE listener for ALL questions
+// ==============================================
+
+
+
+// ==============================================
+// 3.2 RECORD HANDLER (Starts recording)
+// ==============================================
+async function handleRecord(qNumber) {
+  console.log(`Starting recording for Q${qNumber}`);
+  
+  // Safety: Stop ANY other recording first (only one at a time)
+  for (let q in voiceState) {
+    if (voiceState[q].recording && q != qNumber) {
+      console.log(`Stopping Q${q} to record Q${qNumber}`);
+      await handleStop(parseInt(q));
+    }
+  }
+  
+  // Start recording through our audio engine
+  const success = await voiceRecorder.startRecording(qNumber);
+  
+  if (success) {
+    // Update state
+    voiceState[qNumber].recording = true;
+    
+    // Start 30-second countdown timer
+    startTimer(qNumber, 30, () => {
+      console.log(`Timer expired for Q${qNumber}, auto-stopping`);
+      handleStop(qNumber);
+    });
+  } else {
+    alert("Could not access microphone. Please check permissions.");
+  }
+}
+
+// ==============================================
+// 3.3 STOP HANDLER (Stops recording, creates blob)
+// ==============================================
+async function handleStop(qNumber) {
+  console.log(`Stopping recording for Q${qNumber}`);
+  
+  // Stop recording and get audio blob
+  const blob = await voiceRecorder.stopRecording(qNumber);
+  
+  if (blob) {
+    // Update state: no longer recording, store the blob
+    voiceState[qNumber].recording = false;
+    voiceState[qNumber].blob = blob;
+    
+    // Stop the countdown timer
+    stopTimer(qNumber);
+    
+    console.log(`Q${qNumber} stopped, blob size: ${blob.size} bytes`);
+  }
+}
+
+// ==============================================
+// 3.4 PLAY HANDLER (Plays draft or saved audio)
+// ==============================================
+async function handlePlay(qNumber) {
+  const state = voiceState[qNumber];
+  
+  if (state.blob) {
+    // Play the DRAFT version (local blob, not uploaded yet)
+    console.log(`Playing draft for Q${qNumber}`);
+    voiceRecorder.playAudio(state.blob);
+  } else if (state.url) {
+    // Play the SAVED version (from Firebase URL)
+    console.log(`Playing saved audio for Q${qNumber}`);
+    voiceRecorder.playAudio(state.url);
+  } else {
+    console.log(`Nothing to play for Q${qNumber}`);
+  }
+}
+
+// ==============================================
+// 3.5 SAVE HANDLER (Uploads to Firebase, saves URL)
+// ==============================================
+async function handleSave(qNumber) {
+  const state = voiceState[qNumber];
+  
+  // Must have a blob to save
+  if (!state.blob) {
+    alert("Record something first!");
+    return;
+  }
+  
+  console.log(`Saving Q${qNumber} to Firebase...`);
+  
+  // 1. Upload blob to Firebase Storage
+  const url = await voiceRecorder.uploadAnswer(qNumber, state.blob);
+  
+  if (url) {
+    // 2. Save URL to Firestore database
+    await setDoc(doc(db, "users", user.uid), {
+      [`voiceAnswers.q${qNumber}`]: url, // Dynamic key: q1, q2, or q3
+      updatedAt: new Date()
+    }, { merge: true }); // merge: true keeps other fields intact
+    
+    // 3. Update local state
+    voiceState[qNumber].url = url;       // Store the permanent URL
+    voiceState[qNumber].blob = null;     // Clear the temporary blob
+    
+    // 4. Update global profile object (for immediate UI updates)
+    profile.voiceAnswers = profile.voiceAnswers || {};
+    profile.voiceAnswers[`q${qNumber}`] = url;
+    
+    console.log(`Q${qNumber} saved successfully! URL: ${url.substring(0, 80)}...`);
+    alert(`Answer ${qNumber} saved successfully!`);
+  } else {
+    alert("Failed to save. Please try again.");
+  }
+}
+
+// ==============================================
+// 3.6 DELETE HANDLER (Removes draft or saved answer)
+// ==============================================
+async function handleDelete(qNumber) {
+  const state = voiceState[qNumber];
+  const hasSavedAnswer = !!state.url;
+  const hasDraft = !!state.blob;
+  
+  if (!hasSavedAnswer && !hasDraft) {
+    console.log(`Nothing to delete for Q${qNumber}`);
+    return;
+  }
+  
+  if (confirm(`Delete ${hasSavedAnswer ? 'saved ' : ''}answer ${qNumber}?`)) {
+    // If it was saved to Firebase, remove from Firestore
+    if (hasSavedAnswer) {
+      await setDoc(doc(db, "users", user.uid), {
+        [`voiceAnswers.q${qNumber}`]: null, // Set to null to remove field
+        updatedAt: new Date()
+      }, { merge: true });
+      
+      // Remove from global profile
+      if (profile.voiceAnswers) {
+        delete profile.voiceAnswers[`q${qNumber}`];
+      }
+    }
+    
+    // RESET STATE COMPLETELY for this question
+    voiceState[qNumber] = {
+      recording: false,
+      blob: null,
+      url: null
+    };
+    
+    console.log(`Q${qNumber} deleted successfully`);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ==============================================
+// PHASE 4: TIMER FUNCTIONS
+// ==============================================
+// Manages 30-second countdown timers for each question
+// ==============================================
+
+// ==============================================
+// 4.1 START TIMER (Starts countdown for a question)
+// ==============================================
+/**
+ * Starts a countdown timer for a specific question
+ * @param {number} qNumber - Question number (1, 2, or 3)
+ * @param {number} seconds - Starting time in seconds (30)
+ * @param {function} onComplete - Called when timer reaches 0
+ */
+function startTimer(qNumber, seconds, onComplete) {
+  // 1. Find the timer display element for this question
+  const timerEl = document.querySelector(`.voice-question[data-q="${qNumber}"] .timer`);
+  if (!timerEl) return;
+  
+  // 2. Stop any existing timer for this question
+  stopTimer(qNumber);
+  
+  // 3. Initialize countdown
+  let timeLeft = seconds;
+  
+  // 4. Update display immediately
+  const minutes = Math.floor(timeLeft / 60);
+  const secs = timeLeft % 60;
+  timerEl.textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  
+  // 5. Create interval that updates every second
+  voiceTimers[qNumber] = setInterval(() => {
+    timeLeft--;
+    
+    // Update display
+    const minutes = Math.floor(timeLeft / 60);
+    const secs = timeLeft % 60;
+    timerEl.textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    
+    // Optional: Visual warning when time is low
+    if (timeLeft <= 5) {
+      timerEl.style.color = '#ff6b6b';
+      timerEl.style.fontWeight = 'bold';
+    }
+    
+    // Timer complete - stop and call callback
+    if (timeLeft <= 0) {
+      stopTimer(qNumber);
+      onComplete();
+    }
+  }, 1000); // Run every 1000ms (1 second)
+  
+  console.log(`Timer started for Q${qNumber}: ${seconds} seconds`);
+}
+
+// ==============================================
+// 4.2 STOP TIMER (Stops countdown for a question)
+// ==============================================
+/**
+ * Stops the timer for a specific question
+ * @param {number} qNumber - Question number (1, 2, or 3)
+ */
+function stopTimer(qNumber) {
+  // 1. Clear the interval if it exists
+  if (voiceTimers[qNumber]) {
+    clearInterval(voiceTimers[qNumber]);
+    delete voiceTimers[qNumber];
+    console.log(`Timer stopped for Q${qNumber}`);
+  }
+  
+  // 2. Reset the timer display
+  const timerEl = document.querySelector(`.voice-question[data-q="${qNumber}"] .timer`);
+  if (timerEl) {
+    timerEl.textContent = '00:30';
+    timerEl.style.color = ''; // Reset color
+    timerEl.style.fontWeight = ''; // Reset font weight
+  }
+}
+
+// ==============================================
+// 4.3 GET TIME LEFT (Utility function - optional)
+// ==============================================
+/**
+ * Gets remaining time for a question's timer
+ * @param {number} qNumber - Question number
+ * @returns {number|null} Seconds left, or null if no timer
+ */
+function getTimeLeft(qNumber) {
+  const timerEl = document.querySelector(`.voice-question[data-q="${qNumber}"] .timer`);
+  if (!timerEl) return null;
+  
+  const [minutes, seconds] = timerEl.textContent.split(':').map(Number);
+  return (minutes * 60) + seconds;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Chat
 function openChat(matchId) {
