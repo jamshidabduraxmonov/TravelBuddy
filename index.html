@@ -347,6 +347,8 @@
   line-height: 1.4;
 }
 
+
+
 </style>
 
 
@@ -454,6 +456,458 @@
 }
 </style>
 
+<style id="newProfileStyle">
+  /* ADD to your existing CSS */
+.profile-avatar, .match-avatar {
+  background-size: cover !important;     /* ← NEW: Make photos fill circle */
+  background-position: center !important; /* ← NEW: Center photos */
+  background-repeat: no-repeat !important;/* ← NEW: Don't repeat */
+}
+
+.remove-btn { /* ← NEW: Style for remove button */
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 15px;
+  margin-left: 10px;
+  cursor: pointer;
+}
+</style>
+
+
+
+
+<style id="complexProfile">
+
+/* Add to your existing CSS */
+.date-inputs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.date-inputs input {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.checkbox-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.checkbox-option {
+  padding: 10px;
+  border: 1px solid #e4e6ea;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.checkbox-option:hover {
+  background: #f8f9fa;
+}
+
+textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  min-height: 80px;
+  resize: vertical;
+}
+
+select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: white;
+}
+
+</style>
+
+<style id="forNavProblem">
+
+#content {
+  padding-bottom: 80px; /* Space for nav */
+  min-height: calc(100vh - 80px); /* Ensures content fills screen */
+}
+
+.nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: white;
+  border-top: 1px solid #e4e6ea;
+  z-index: 1000;
+}
+
+</style>
+
+
+<!-- CSS for the new FEED -->
+ <style id="forNewFeed">
+    .discovery-single {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.profile-card {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  overflow: hidden;
+  padding: 25px;
+}
+
+.feed-profile-pic {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  margin: 0 auto 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 48px;
+  font-weight: bold;
+  background-size: cover;
+  background-position: center;
+}
+
+.profile-header {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+.profile-header h2 {
+  margin: 0 0 10px 0;
+  font-size: 28px;
+  color: #1c1e21;
+}
+
+.vibe-badge {
+  display: inline-block;
+  background: #f0f2f5;
+  color: #65676b;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.details-section {
+  margin: 25px 0;
+  border-top: 1px solid #e4e6ea;
+  border-bottom: 1px solid #e4e6ea;
+  padding: 20px 0;
+}
+
+.detail-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.detail-item:last-child {
+  margin-bottom: 0;
+}
+
+.detail-icon {
+  font-size: 24px;
+  margin-right: 15px;
+  flex-shrink: 0;
+}
+
+.detail-item strong {
+  display: block;
+  color: #65676b;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.detail-item p {
+  margin: 0;
+  color: #1c1e21;
+  font-size: 16px;
+}
+
+.icebreaker {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 12px;
+  margin: 20px 0;
+  border-left: 4px solid #1877f2;
+}
+
+.icebreaker strong {
+  color: #1877f2;
+}
+
+.audio-section {
+  margin: 25px 0;
+  text-align: center;
+}
+
+.coming-soon {
+  color: #8a8d91;
+  font-style: italic;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 10px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 15px;
+  margin-top: 25px;
+}
+
+.pass-btn, .like-btn {
+  flex: 1;
+  padding: 18px;
+  border: none;
+  border-radius: 15px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pass-btn {
+  background: white;
+  color: #ff6b6b;
+  border: 2px solid #ff6b6b;
+}
+
+.pass-btn:hover {
+  background: #ff6b6b;
+  color: white;
+}
+
+.like-btn {
+  background: #00c853;
+  color: white;
+  border: 2px solid #00c853;
+}
+
+.like-btn:hover {
+  background: #00a844;
+}
+
+.candidate-counter {
+  text-align: center;
+  margin-top: 20px;
+  color: #8a8d91;
+  font-size: 14px;
+}
+
+.loading, .no-matches {
+  text-align: center;
+  padding: 60px 20px;
+  color: #65676b;
+}
+
+.no-matches h3 {
+  color: #1c1e21;
+}
+ </style>
+
+
+<style class="audioStyle">
+.voice-questions {
+  margin-top: 15px;
+}
+
+.voice-question {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  border-left: 4px solid #1877f2;
+}
+
+.voice-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.record-btn, .play-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.record-btn {
+  background: #ff6b6b;
+  color: white;
+}
+
+.play-btn:not(:disabled) {
+  background: #00c853;
+  color: white;
+}
+
+.play-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.timer {
+  font-family: monospace;
+  font-size: 16px;
+  color: #666;
+}
+
+</style>
+
+
+
+<style class="voiceUI">
+
+/* Voice Questions Styling */
+.voice-question {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  border-left: 4px solid #1877f2;
+}
+
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.question-status {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #e4e6eb;
+  color: #65676b;
+}
+
+.question-status[data-status="empty"] {
+  background: #e4e6eb;
+  color: #65676b;
+}
+
+.question-status[data-status="recording"] {
+  background: #ff6b6b;
+  color: white;
+  animation: pulse 1.5s infinite;
+}
+
+.question-status[data-status="draft"] {
+  background: #ffd166;
+  color: #333;
+}
+
+.question-status[data-status="saved"] {
+  background: #00c853;
+  color: white;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+.voice-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.voice-controls button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.record-btn {
+  background: #1877f2;
+  color: white;
+}
+
+.stop-btn {
+  background: #ff6b6b;
+  color: white;
+}
+
+.play-btn {
+  background: #00c853;
+  color: white;
+}
+
+.save-btn {
+  background: #4caf50;
+  color: white;
+}
+
+.delete-btn {
+  background: #ff5252;
+  color: white;
+}
+
+.voice-controls button:disabled {
+  background: #e4e6eb;
+  color: #8a8d91;
+  cursor: not-allowed;
+}
+
+.timer {
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: bold;
+  color: #1877f2;
+  margin-left: auto;
+}
+
+.recording-status {
+  margin-top: 10px;
+}
+
+.status-text {
+  color: #65676b;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.waveform {
+  height: 30px;
+  background: linear-gradient(90deg, #1877f2 0%, transparent 100%);
+  border-radius: 4px;
+  animation: wave 2s infinite linear;
+  opacity: 0.7;
+}
+
+@keyframes wave {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+</style>
+
 </head>
 <body>
 
@@ -465,5 +919,6 @@
     <!-- Add to your index.html -->
     <script src="https://unpkg.com/@daily-co/daily-js"></script>
 
+    <script type="module" src="audio.js"></script>
   </body>
 </html>
