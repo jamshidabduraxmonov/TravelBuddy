@@ -254,16 +254,33 @@ async function renderFeed() {
           </div>` : ''}
         </div>
 
+        
         ${currentCandidate.icebreaker ? `
         <div class="icebreaker">
-          <strong>💬 Says:</strong>
+          <strong>Says:</strong>
           <p>"${currentCandidate.icebreaker}"</p>
         </div>` : ''}
 
         <div class="audio-section">
           <h4>Voice Answers</h4>
-          <p class="coming-soon">🎤 Audio feature coming soon!</p>
+          ${[1,2,3].map(q => {
+            const url = currentCandidate.voiceAnswers?.[`q${q}`];
+            if (!url) return '';
+            return `
+            <div class="voice-answer-compact">
+              <strong>🎤 Q${q}</strong>
+              <audio controls src="${url}" preload="none"></audio>
+            </div>`;
+          }).join('')}
+          ${!Object.keys(currentCandidate.voiceAnswers || {}).length ? 
+            '<p class="no-voice">No voice answers yet</p>' : ''}
         </div>
+
+
+
+
+
+
 
         <div class="action-buttons">
           <button class="pass-btn" data-id="${currentCandidate.id}">✗ Pass</button>
