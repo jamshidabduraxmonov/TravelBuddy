@@ -722,6 +722,19 @@ document.getElementById('voiceQuestionsContainer').addEventListener('click', asy
   // 5.2 LOAD SAVED ANSWERS FROM PROFILE
   // ==============================================
   // Check if user has previously saved voice answers
+
+  // FIX: Convert old flat Firestore fields into nested structure
+if (!profile.voiceAnswers) {
+  profile.voiceAnswers = {};
+
+  if (profile["voiceAnswers.q1"]) profile.voiceAnswers.q1 = profile["voiceAnswers.q1"];
+  if (profile["voiceAnswers.q2"]) profile.voiceAnswers.q2 = profile["voiceAnswers.q2"];
+  if (profile["voiceAnswers.q3"]) profile.voiceAnswers.q3 = profile["voiceAnswers.q3"];
+}
+
+
+
+
   if (profile.voiceAnswers) {
     console.log("Loading saved voice answers:", profile.voiceAnswers);
     
@@ -978,41 +991,43 @@ async function handlePlay(qNumber) {
 // ==============================================
 // 3.5 SAVE HANDLER (Uploads to Firebase, saves URL)
 // ==============================================
+  
 async function handleSave(qNumber) {
   const state = voiceState[qNumber];
   
-  // Must have a blob to save
   if (!state.blob) {
-    alert("Record something first!");
+    alert("No recording to save!");
     return;
   }
-  
-  console.log(`Saving Q${qNumber} to Firebase...`);
-  
+
   // 1. Upload blob to Firebase Storage
-  const url = await voiceRecorder.uploadAnswer(qNumber, state.blob);
-  
-  if (url) {
-    // 2. Save URL to Firestore database
-    await setDoc(doc(db, "users", user.uid), {
-      [`voiceAnswers.q${qNumber}`]: url, // Dynamic key: q1, q2, or q3
-      updatedAt: new Date()
-    }, { merge: true }); // merge: true keeps other fields intact
-    
-    // 3. Update local state
-    voiceState[qNumber].url = url;       // Store the permanent URL
-    voiceState[qNumber].blob = null;     // Clear the temporary blob
-    
-    // 4. Update global profile object (for immediate UI updates)
-    profile.voiceAnswers = profile.voiceAnswers || {};
-    profile.voiceAnswers[`q${qNumber}`] = url;
-    
-    console.log(`Q${qNumber} saved successfully! URL: ${url.substring(0, 80)}...`);
-    alert(`Answer ${qNumber} saved successfully!`);
-  } else {
-    alert("Failed to save. Please try again.");
+  const downloadURL = await voiceRecorder.uploadAnswer(qNumber, state.blob);
+  if (!downloadURL) {
+    alert("Upload failed. Try again.");
+    return;
   }
+
+  // 2. Save nested voiceAnswers object correctly (🔥 FIX HERE)
+  await setDoc(
+    doc(db, "users", user.uid),
+    {
+      voiceAnswers: {
+        [`q${qNumber}`]: downloadURL
+      }
+    },
+    { merge: true }
+  );
+
+  // 3. Update local state
+  state.url = downloadURL;
+  state.blob = null;
+
+  // 4. Update UI
+  updateQuestionUI(qNumber);
+
+  alert("Answer saved!");
 }
+
 
 // ==============================================
 // 3.6 DELETE HANDLER (Removes draft or saved answer)
@@ -1299,6 +1314,7 @@ document.addEventListener('click', async (event) => {
       }
     }
 });
+
 
 
 
