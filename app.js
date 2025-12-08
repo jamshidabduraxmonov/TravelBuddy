@@ -263,17 +263,22 @@ async function renderFeed() {
 
         <div class="audio-section">
           <h4>Voice Answers</h4>
-          ${[1,2,3].map(q => {
+          
+          ${[ 
+            {q:1, text:"Tell us your best travel story in 30 seconds"},
+            {q:2, text:"Why do you want a travel buddy in Dubai?"},
+            {q:3, text:"Describe your perfect day in Dubai"}
+          ].map(({q, text}) => {
             const url = currentCandidate.voiceAnswers?.[`q${q}`];
-            if (!url) return '';
             return `
-            <div class="voice-answer-compact">
-              <strong>🎤 Q${q}</strong>
-              <audio controls src="${url}" preload="none"></audio>
+            <div class="voice-answer-feed">
+              <div class="question-label">Q${q}: ${text}</div>
+              ${url ? 
+                `<audio controls src="${url}" preload="none"></audio>` : 
+                `<small class="not-recorded">Not recorded yet</small>`
+              }
             </div>`;
           }).join('')}
-          ${!Object.keys(currentCandidate.voiceAnswers || {}).length ? 
-            '<p class="no-voice">No voice answers yet</p>' : ''}
         </div>
 
 
