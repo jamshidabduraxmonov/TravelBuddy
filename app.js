@@ -154,6 +154,55 @@ onAuthStateChanged(auth, async (u) => {
 async function renderFeed() {
   content.innerHTML = `<div class="loading">Finding travel buddies...</div>`;
 
+
+  // For the "Let's meet!" feature!!! ///////////////////
+
+
+const incomingReqs = await getDocs(query(
+  collection(db, "meetRequests"),
+  where("recipientId", "==", user.uid),
+  where("status", "==", "pending")
+));
+
+if (!incomingReqs.empty) {
+  const req = incomingReqs.docs[0].data();
+  const reqId = incomingReqs.docs[0].id;
+
+  content.innerHTML = `
+    <div style="background:#667eea;color:white;padding:30px;border-radius:20px;text-align:center;margin:20px;">
+      <h3>${req.requesterName} wants to meet you!</h3>
+      <button id="acceptBtn" style="background:#00c853;color:white;padding:15px 30px;border:none;border-radius:30px;margin:10px;font-size:18px;cursor:pointer;">
+        Yes, let’s meet!
+      </button>
+      <button id="declineBtn" style="background:#ff5252;color:white;padding:15px 30px;border:none;border-radius:30px;margin:10px;font-size:18px;cursor:pointer;">
+        No thanks
+      </button>
+    </div>
+  `;
+
+  document.getElementById('acceptBtn').onclick = async () => {
+    await acceptMeetRequest(reqId, req.requesterId);
+    openChat([user.uid, req.requesterId].sort().join('_'));
+  };
+  
+
+// For the No button!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  document.getElementById('declineBtn').onclick = async () => {
+    await declineMeetRequest(reqId);
+    renderFeed();
+  };
+
+// For the NO button!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+  return;
+}
+
+
+// For the "Let's meet!" feature!!! ////////////////////////////////////////
+
+
   const myVibe = profile.vibe;
   const vibeChanged = lastVibe !== myVibe[0];
   
@@ -184,6 +233,43 @@ async function renderFeed() {
   }
 
   const currentCandidate = feedCandidates[currentCandidateIndex];
+
+
+// For the "Let's meet!" feature! //////////////////////////////////////////////////
+
+
+  let buttonText = "⚡ Let’s meet!";
+  let buttonDisabled = false;
+  let buttonStyle = "";
+
+  const matchId = [user.uid, currentCandidate.id].sort().join('_');
+  if ((await getDoc(doc(db, "matches", matchId))).exists()) {
+    buttonText = "Already connected";
+    buttonDisabled = true;
+    buttonStyle = "background:#ccc;color:#999;cursor:not-allowed;";
+  }
+
+  // My pending request to them
+  const myRequestSnap = await getDoc(doc(db, "meetRequests", `${user.uid}_${currentCandidate.id}`));
+  if (myRequestSnap.exists() && myRequestSnap.data().status === "pending") {
+    buttonText = "Pending";
+    buttonDisabled = true;
+    buttonStyle = "background:#ff9800;color:white;cursor:not-allowed;";
+  }
+
+  // Their pending request to me
+  const theirRequestSnap = await getDoc(doc(db, "meetRequests", `${currentCandidate.id}_${user.uid}`));
+  if (theirRequestSnap.exists() && theirRequestSnap.data().status === "pending") {
+    buttonText = "They want to meet!";
+    buttonDisabled = true;
+    buttonStyle = "background:#667eea;color:white;cursor:not-allowed;";
+  }
+
+
+// For the "Let's meet!" feature! ///////////////////////////////////////////////////////////
+
+
+
   
   const formatDate = (dateStr) => {
     if (!dateStr) return 'Not specified';
@@ -289,7 +375,10 @@ async function renderFeed() {
 
         <div class="action-buttons">
           <button class="pass-btn" data-id="${currentCandidate.id}">✗ Pass</button>
-          <button class="like-btn" data-id="${currentCandidate.id}">♥ Like</button>
+          <button class="like-btn" data-id="${currentCandidate.id}" 
+        ${buttonDisabled ? 'disabled style="' + buttonStyle + '"' : ''}>
+        ${buttonText}
+      </button>
         </div>
       </div>
 
@@ -308,23 +397,27 @@ async function renderFeed() {
     renderFeed();
   };
 
-  document.querySelector('.like-btn').onclick = async () => {
-    const otherId = currentCandidate.id;
-    await startMatch(user.uid, otherId);
-    alert(`You liked ${currentCandidate.name}! Check your inbox for matches.`);
-    
-    currentCandidateIndex++;
-    if (currentCandidateIndex >= feedCandidates.length) {
-      content.innerHTML = `
-        <div class="no-matches">
-          <h3>Match made! 🎉</h3>
-          <p>Check your inbox to start chatting.</p>
-        </div>`;
-      feedCandidates = [];
-    } else {
-      renderFeed();
+  document.querySelector('.like-btn')?.addEventListener('click', async () => {
+    const recipientId = currentCandidate.id;
+
+    // Check if they already sent request
+    const reverseId = `${recipientId}_${user.uid}`;
+    const reverseSnap = await getDoc(doc(db, "meetRequests", reverseId));
+    if (reverseSnap.exists() && reverseSnap.data().status === "pending") {
+      await acceptMeetRequest(reverseId, recipientId);
+      alert(`Match with ${currentCandidate.name}!`);
+      openChat([user.uid, recipientId].sort().join('_'));
+      return;
     }
-  };
+
+    // Send new request
+    await sendMeetRequest(recipientId);
+    alert(`"Let’s meet!" sent to ${currentCandidate.name}`);
+    currentCandidateIndex++;
+    renderFeed();
+  });
+
+
 }
 
 // Inbox
@@ -1283,6 +1376,46 @@ async function sendMessage(matchId, text) {
   console.log("Message sent to match:", matchId);
 }
 
+
+
+
+// Let's meet feature!!! ///////////////////////////
+// Meet Request System
+async function sendMeetRequest(recipientId) {
+  const requestId = `${user.uid}_${recipientId}`;
+  await setDoc(doc(db, "meetRequests", requestId), {
+    requesterId: user.uid,
+    recipientId: recipientId,
+    status: "pending",
+    createdAt: new Date(),
+    requesterName: profile.name,
+    requesterPhoto: profile.photoURL || null
+  });
+}
+
+async function acceptMeetRequest(requestId, requesterId) {
+  await setDoc(doc(db, "meetRequests", requestId), { status: "accepted" }, { merge: true });
+  const matchId = [user.uid, requesterId].sort().join('_');
+  await setDoc(doc(db, "matches", matchId), {
+    users: [user.uid, requesterId],
+    createdAt: new Date()
+  }, { merge: true });
+}
+
+// Let's meet!  //////////////////////////////////////
+
+
+// Another "Let's meet!" code, but this time it is for "NO" button
+
+async function declineMeetRequest(requestId) {
+  await setDoc(doc(db, "meetRequests", requestId), { status: "declined" }, { merge: true });
+}
+
+
+///// NO button!
+
+
+
 function listenToChat(matchId) {
   const messagesRef = collection(db, "matches", matchId, "messages");
   onSnapshot(messagesRef, (snapshot) => {
@@ -1336,8 +1469,3 @@ document.addEventListener('click', async (event) => {
       }
     }
 });
-
-
-
-
-
