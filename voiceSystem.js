@@ -6,9 +6,11 @@
 // IMPORTS ////////////////////////////////
 
 
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { doc, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { VoiceRecorder } from "./audio.js";
 import { db, user } from './app.js'
+
+import { FieldValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 
 let currentUser = null;
@@ -319,37 +321,28 @@ async function handleDelete(qNumber) {
   const state = voiceState[qNumber];
   const hasSavedAnswer = !!state.url;
   const hasDraft = !!state.blob;
-  
-  if (!hasSavedAnswer && !hasDraft) {
-    console.log(`Nothing to delete for Q${qNumber}`);
-    return;
-  }
-  
-  if (confirm(`Delete ${hasSavedAnswer ? 'saved ' : ''}answer ${qNumber}?`)) {
-    // If it was saved to Firebase, remove from Firestore
+
+  if (!hasSavedAnswer && !hasDraft) return;
+
+  if (confirm(`Delete answer ${qNumber}?`)) {
+    
     if (hasSavedAnswer) {
       await setDoc(doc(db, "users", user.uid), {
-        [`voiceAnswers.q${qNumber}`]: null, // Set to null to remove field
-        updatedAt: new Date()
+        voiceAnswers: {
+          [`q${qNumber}`]: deleteField()
+        }
       }, { merge: true });
-      
-      // Remove from global profile
+
       if (currentProfile.voiceAnswers) {
         delete currentProfile.voiceAnswers[`q${qNumber}`];
       }
     }
-    
-    // RESET STATE COMPLETELY for this question
-    voiceState[qNumber] = {
-      recording: false,
-      blob: null,
-      url: null
-    };
-    
-    console.log(`Q${qNumber} deleted successfully`);
-  }
+
+    // Full reset
+    voiceState[qNumber] = { recording: false, blob: null, url: null };
 
     updateQuestionUI(qNumber);
+  }
 }
 
 
@@ -498,6 +491,9 @@ function initVoiceSystem({ user, profile, db, app }) {
   setTimeout(() => {
     [1, 2, 3].forEach(updateQuestionUI);
   }, 100);
+
+  console.log("Loaded profile.voiceAnswers:", currentProfile.voiceAnswers);
+  console.log("Is currentProfile === profile?", currentProfile === profile);
 }
 
 
@@ -524,3 +520,6 @@ export {
   handleDelete,
   initVoiceSystem
 }
+
+
+window.voiceRecorder = voiceRecorder;
