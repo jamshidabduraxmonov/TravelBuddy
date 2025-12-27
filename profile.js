@@ -359,6 +359,16 @@ initVoiceSystem({ user, profile, db, app });
 
 
 
+
+
+
+
+
+
+
+
+
+
 // Utility functions
 async function startMatch(userId1, userId2) {
   const matchId = `${userId1}_${userId2}`;
@@ -369,6 +379,12 @@ async function startMatch(userId1, userId2) {
   });
   console.log("Match created:", matchId);
 }
+
+
+
+
+
+
 
 
 
@@ -386,6 +402,8 @@ window.listenToChat = listenToChat;
 
 
 }
+
+
 
 
 // EXPORTS
