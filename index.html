@@ -957,5 +957,17 @@ select {
 
     <script type="module" src="audio.js"></script>
     <script type="module" src="meetingPlanner.js"></script>
+
+    
+    <script>
+      document.addEventListener('play', e => {
+        if (e.target.tagName === 'AUDIO') {
+          document.querySelectorAll('audio').forEach(audio => {
+            if (audio !== e.target) audio.pause();
+          });
+        }
+      }, true);
+    </script>
+    
   </body>
 </html>
