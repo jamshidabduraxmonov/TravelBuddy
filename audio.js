@@ -1,5 +1,5 @@
 // audio.js - UPDATED for 3-question architecture
-class VoiceRecorder {
+ export class VoiceRecorder {
   constructor(userId, firebaseApp) {
     this.userId = userId;
     this.firebaseApp = firebaseApp;
@@ -97,6 +97,12 @@ class VoiceRecorder {
   // 4. PLAY AUDIO (from blob or URL)
   // ==============================================
   playAudio(source) {
+
+    if (this.currentAudio) {
+  this.currentAudio.pause();
+  this.currentAudio.currentTime = 0; // optional reset
+}
+
     // Stop any current playback
     if (this.currentAudio) {
       this.currentAudio.pause();
