@@ -9,8 +9,6 @@ import { renderProfileSettings } from './profile.js';
 import { initVoiceSystem } from './voiceSystem.js';
 import { initNavigation } from './navigation.js';
 
-// FOR CACHE
-import { preloadCandidates } from './cache.js';
 
 
 // Near the top, after imports
@@ -134,7 +132,6 @@ if (!matchesCache) {
   `;
 
   initNavigation();
-  preloadCandidates(); // One-time big load
   renderFeed();
 
 });
