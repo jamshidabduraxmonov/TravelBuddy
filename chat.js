@@ -28,16 +28,25 @@ async function renderChat(matchId) {
   document.getElementById('profileBtn').classList.remove('active');
 
   content.innerHTML = `
-    <div class="chat">
-      <h2 style="padding: 16px; margin: 0; background: white; border-bottom: 1px solid #e0e0e0;">Chat</h2>
-      <div id="messages"></div>
-      <div class="chat-input">
+    <div class="chat" style="display: flex; position:fixed; flex-direction: column; height: 90vh; overflow: hidden;">
+      <h2 style="padding: 16px; margin: 0; background: white; border-bottom: 1px solid #e0e0e0; flex-shrink: 0;">Chat</h2>
+      
+      <div id="meeting-planner-container" style="flex-shrink: 0;"></div>
+
+      <div id="messages" style="flex-grow: 1; overflow-y: auto; background: #f9f9f9;"></div>
+      
+      <div class="chat-input" style="flex-shrink: 0;">
         <input id="msg" placeholder="Type message">
         <button id="send">Send</button>
       </div>
     </div>
   `;
 
+  // Initialize the Meeting Planner
+  // We import it dynamically to ensure the container exists first
+  const { initMeetingPlanner } = await import('./meetingPlanner.js');
+  initMeetingPlanner(matchId, document.getElementById('meeting-planner-container'));
+  
   setTimeout(() => document.getElementById('msg').focus(), 100);
   
   const messagesDiv = document.getElementById('messages');
