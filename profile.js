@@ -16,188 +16,159 @@ import { renderFeed } from './feed.js';
 // Profile Settings
 
 async function renderProfileSettings() {
-  content.innerHTML = `
-    <div class="profile-settings">
-      <h2>Complete Your Profile</h2>
-      
-      <div class="profile-picture-section">
-        <div class="profile-avatar" id="profileAvatar" 
-             style="${profile.photoURL ? `background-image: url('${profile.photoURL}')` : ''}">
-          ${!profile.photoURL && profile.name ? profile.name.charAt(0).toUpperCase() : ''}
-        </div>
-        <input type="file" id="profilePhoto" accept="image/*" style="display: none;">
-        <button id="uploadPhotoBtn" class="change-photo-btn">
-          ${profile.photoURL ? 'Change Photo' : 'Upload Photo'}
-        </button>
-        ${profile.photoURL ? '<button id="removePhotoBtn" class="remove-btn">Remove Photo</button>' : ''}
-      </div>
-
-      <div class="setting-group">
-        <label>Your Name *</label>
-        <input type="text" id="profileName" value="${profile.name || ''}" placeholder="First name">
-      </div>
-
-      <div class="setting-group">
-        <label>Your Travel Vibe *</label>
-        <div class="vibe-options">
-          ${['Budget Explorer', 'Luxury Relaxer', 'Culture Seeker', 'Adrenaline Junkie']
-            .map(vibe => `
-              <label class="vibe-option">
-                <input type="radio" name="profileVibe" value="${vibe}" 
-                  ${profile.vibe && profile.vibe.includes(vibe) ? 'checked' : ''}>
-                ${vibe}
-              </label>
-            `).join('')}
-        </div>
-      </div>
-
-      <div class="setting-group">
-        <label>Your Dubai Dates *</label>
-        <div class="date-inputs">
-          <input type="date" id="dateFrom" value="${profile.travelDates?.from || ''}" placeholder="From">
-          <span>to</span>
-          <input type="date" id="dateTo" value="${profile.travelDates?.to || ''}" placeholder="To">
-        </div>
-      </div>
-
-      <div class="setting-group">
-        <label>Where are you staying?</label>
-        <input type="text" id="accommodation" value="${profile.accommodation || ''}" 
-               placeholder="Hotel name or area (e.g., Rove Downtown, Marina)">
-      </div>
-
-      <div class="setting-group">
-        <label>What brings you to Dubai? (pick 1-3)</label>
-        <div class="checkbox-options">
-          ${['Sightseeing', 'Food & Dining', 'Shopping', 'Adventure', 'Business', 'Relaxation', 'Photography']
-            .map(purpose => `
-              <label class="checkbox-option">
-                <input type="checkbox" value="${purpose}" 
-                  ${profile.tripPurpose?.includes(purpose) ? 'checked' : ''}>
-                ${purpose}
-              </label>
-            `).join('')}
-        </div>
-      </div>
-
-      <div class="setting-group">
-        <label>Daily Spending Range (AED)</label>
-        <select id="dailyBudget">
-          <option value="" ${!profile.dailyBudget ? 'selected' : ''}>Select range</option>
-          <option value="Under 200" ${profile.dailyBudget === 'Under 200' ? 'selected' : ''}>Under 200 AED</option>
-          <option value="200-500" ${profile.dailyBudget === '200-500' ? 'selected' : ''}>200-500 AED</option>
-          <option value="500-1000" ${profile.dailyBudget === '500-1000' ? 'selected' : ''}>500-1000 AED</option>
-          <option value="1000+" ${profile.dailyBudget === '1000+' ? 'selected' : ''}>1000+ AED</option>
-        </select>
-      </div>
-
-      <div class="setting-group">
-        <label>Languages you speak</label>
-        <div class="checkbox-options">
-          ${['English', 'Arabic', 'Hindi/Urdu', 'Russian', 'French', 'Spanish', 'Other']
-            .map(lang => `
-              <label class="checkbox-option">
-                <input type="checkbox" value="${lang}" 
-                  ${profile.languages?.includes(lang) ? 'checked' : ''}>
-                ${lang}
-              </label>
-            `).join('')}
-        </div>
-      </div>
-
-      <div class="setting-group">
-        <label>Your Icebreaker *</label>
-        <textarea id="icebreaker" placeholder="What makes you a great travel buddy? (e.g., 'I know all the best shawarma spots!')">${profile.icebreaker || ''}</textarea>
-        <small>This appears on your profile</small>
-      </div>
-
-
-
-
-<!-- Voice Questions Section -->
-<div class="setting-group">
-  <label>Voice Answers (30 seconds each)</label>
   
-  <div id="voiceQuestionsContainer">
-    <!-- Question 1 -->
-    <div class="voice-question" data-q="1">
-      <div class="question-header">
-        <strong>🎤 1. What's your favorite travel memory?</strong>
-        <span class="question-status" data-status="empty">Not recorded</span>
+  content.innerHTML = `
+  <div class="profile-settings">
+    <h2>Complete Your Profile</h2>
+    
+    <div class="profile-picture-section">
+      <div class="profile-avatar" id="profileAvatar" 
+          style="${profile.photoURL ? `background-image: url('${profile.photoURL}'); width: 280px; height: 420px; border-radius: 16px;` : 'width: 280px; height: 420px; border-radius: 16px;'}">
+          ${!profile.photoURL && profile.name ? profile.name.charAt(0).toUpperCase() : ''}
       </div>
-      
-      <div class="voice-controls">
-        <button class="record-btn" data-action="record">🎤 Record</button>
-        <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
-        <button class="play-btn" data-action="play" disabled>▶️ Play</button>
-        <button class="save-btn" data-action="save" disabled>✅ Save</button>
-        <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
-        
-        <span class="timer">00:30</span>
-      </div>
-      
-      <div class="recording-status">
-        <small class="status-text">Press Record to start</small>
-        <div class="waveform"></div>
+      <input type="file" id="profilePhoto" accept="image/*" style="display: none;">
+      <button id="uploadPhotoBtn" class="change-photo-btn">
+        ${profile.photoURL ? 'Change Photo' : 'Upload Photo'}
+      </button>
+      ${profile.photoURL ? '<button id="removePhotoBtn" class="remove-btn">Remove Photo</button>' : ''}
+    </div>
+
+    <div class="setting-group">
+      <label>Your Name *</label>
+      <input type="text" id="profileName" value="${profile.name || ''}" placeholder="First name">
+    </div>
+
+
+
+    <div class="setting-group">
+      <label>Your Dubai Dates *</label>
+      <div class="date-inputs">
+        <input type="date" id="dateFrom" value="${profile.travelDates?.from || ''}" placeholder="From">
+        <span>to</span>
+        <input type="date" id="dateTo" value="${profile.travelDates?.to || ''}" placeholder="To">
       </div>
     </div>
 
-    <!-- Question 2 -->
-    <div class="voice-question" data-q="2">
-      <div class="question-header">
-        <strong>🎤 2. Why do you want a travel buddy in Dubai?</strong>
-        <span class="question-status" data-status="empty">Not recorded</span>
-      </div>
+    <div class="setting-group">
+      <label>Where are you staying?</label>
+      <input type="text" id="accommodation" value="${profile.accommodation || ''}" 
+             placeholder="Hotel name or area (e.g., Rove Downtown, Marina)">
+    </div>
+
+    <!-- Voice Questions Section - fully kept -->
+    <div class="setting-group">
+      <label>Voice Answers (30 seconds each)</label>
       
-      <div class="voice-controls">
-        <button class="record-btn" data-action="record">🎤 Record</button>
-        <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
-        <button class="play-btn" data-action="play" disabled>▶️ Play</button>
-        <button class="save-btn" data-action="save" disabled>✅ Save</button>
-        <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
-        
-        <span class="timer">00:30</span>
-      </div>
-      
-      <div class="recording-status">
-        <small class="status-text">Press Record to start</small>
-        <div class="waveform"></div>
+      <div id="voiceQuestionsContainer">
+        <!-- Question 1 -->
+        <div class="voice-question" data-q="1">
+          <div class="question-header">
+            <strong>🎤 1. What's something simple you enjoy more than people expect?</strong>
+            <span class="question-status" data-status="empty">Not recorded</span>
+          </div>
+          
+          <div class="voice-controls">
+            <button class="record-btn" data-action="record">🎤 Record</button>
+            <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
+            <button class="play-btn" data-action="play" disabled>▶️ Play</button>
+            <button class="save-btn" data-action="save" disabled>✅ Save</button>
+            <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
+            
+            <span class="timer">00:30</span>
+          </div>
+          
+          <div class="recording-status">
+            <small class="status-text">Press Record to start</small>
+            <div class="waveform"></div>
+          </div>
+        </div>
+
+        <!-- Question 2 -->
+        <div class="voice-question" data-q="2">
+          <div class="question-header">
+            <strong>🎤 2. What feels different to you when you are in a new place?</strong>
+            <span class="question-status" data-status="empty">Not recorded</span>
+          </div>
+          
+          <div class="voice-controls">
+            <button class="record-btn" data-action="record">🎤 Record</button>
+            <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
+            <button class="play-btn" data-action="play" disabled>▶️ Play</button>
+            <button class="save-btn" data-action="save" disabled>✅ Save</button>
+            <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
+            
+            <span class="timer">00:30</span>
+          </div>
+          
+          <div class="recording-status">
+            <small class="status-text">Press Record to start</small>
+            <div class="waveform"></div>
+          </div>
+        </div>
+
+        <!-- Question 3 -->
+        <div class="voice-question" data-q="3">
+          <div class="question-header">
+            <strong>🎤 3. Tell us about a small moment you enjoyed recently.</strong>
+            <span class="question-status" data-status="empty">Not recorded</span>
+          </div>
+          
+          <div class="voice-controls">
+            <button class="record-btn" data-action="record">🎤 Record</button>
+            <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
+            <button class="play-btn" data-action="play" disabled>▶️ Play</button>
+            <button class="save-btn" data-action="save" disabled>✅ Save</button>
+            <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
+            
+            <span class="timer">00:30</span>
+          </div>
+          
+          <div class="recording-status">
+            <small class="status-text">Press Record to start</small>
+            <div class="waveform"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Question 3 -->
-    <div class="voice-question" data-q="3">
-      <div class="question-header">
-        <strong>🎤 3. Describe your ideal day in Dubai in 3 sentences</strong>
-        <span class="question-status" data-status="empty">Not recorded</span>
-      </div>
-      
-      <div class="voice-controls">
-        <button class="record-btn" data-action="record">🎤 Record</button>
-        <button class="stop-btn" data-action="stop" disabled>⏹️ Stop</button>
-        <button class="play-btn" data-action="play" disabled>▶️ Play</button>
-        <button class="save-btn" data-action="save" disabled>✅ Save</button>
-        <button class="delete-btn" data-action="delete" disabled>🗑️ Delete</button>
-        
-        <span class="timer">00:30</span>
-      </div>
-      
-      <div class="recording-status">
-        <small class="status-text">Press Record to start</small>
-        <div class="waveform"></div>
+
+
+
+    <div class="setting-group">
+      <label>🎯 Current Intention</label>
+      <div class="intention-options" style="display:grid; gap:12px;">
+        ${['Coffee & conversation', 'Walk & talk', 'Food', 'Exploring', 'Open / spontaneous']
+          .map(opt => `
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="radio" name="currentIntention" value="${opt}" 
+                ${profile.currentIntention === opt ? 'checked' : ''}>
+              ${opt}
+            </label>
+          `).join('')}
       </div>
     </div>
+
+
+
+
+    <div class="setting-group">
+      <label>⏰ Availability (optional)</label>
+      <div class="availability-options" style="display:grid; gap:12px;">
+        ${['Today', 'Tomorrow']
+          .map(opt => `
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="radio" name="availability" value="${opt}" 
+                ${profile.availability === opt ? 'checked' : ''}>
+              ${opt}
+            </label>
+          `).join('')}
+      </div>
+    </div>
+
+
+    <button id="saveProfile" class="save-btn">Save & Continue</button>
   </div>
-</div>
-
-
-
-
-
-      <button id="saveProfile" class="save-btn">Save & Continue</button>
-    </div>
-  `;
-
+`;
 
 
 
@@ -298,19 +269,14 @@ document.getElementById('voiceQuestionsContainer').addEventListener('click', asy
     // Save handler
   document.getElementById('saveProfile').onclick = async () => {
     const newName = document.getElementById('profileName').value.trim();
-    const selectedVibe = document.querySelector('input[name="profileVibe"]:checked')?.value;
     const dateFrom = document.getElementById('dateFrom').value;
     const dateTo = document.getElementById('dateTo').value;
     const accommodation = document.getElementById('accommodation').value.trim();
     
-    const tripPurpose = Array.from(document.querySelectorAll('.checkbox-option input[type="checkbox"]:checked'))
-                            .map(cb => cb.value);
-    const languages = Array.from(document.querySelectorAll('.checkbox-option input[type="checkbox"]:checked'))
-                          .map(cb => cb.value);
-    const dailyBudget = document.getElementById('dailyBudget').value;
-    const icebreaker = document.getElementById('icebreaker').value.trim();
+    const currentIntention = document.querySelector('input[name="currentIntention"]:checked')?.value;
+    const availability = document.querySelector('input[name="availability"]:checked')?.value;
 
-    if (!newName || !selectedVibe || !dateFrom || !dateTo || !icebreaker) {
+    if (!newName || !dateFrom || !dateTo) {
       alert('Please fill all required fields (*)');
       return;
     }
@@ -318,25 +284,19 @@ document.getElementById('voiceQuestionsContainer').addEventListener('click', asy
     try {
       const updateData = {
         name: newName,
-        vibe: [selectedVibe],
         travelDates: { from: dateFrom, to: dateTo },
         accommodation,
-        tripPurpose,
-        dailyBudget,
-        languages,
-        icebreaker,
+        currentIntention,
+        availability,
         updatedAt: new Date()
       };
 
-      // Photo already uploaded directly to Storage and URL set in avatar
-      // If user uploaded new photo, it's already in profile.photoURL (from upload handler)
       if (profile.photoURL) {
         updateData.photoURL = profile.photoURL;
       }
 
       await setDoc(doc(db, "users", user.uid), updateData, { merge: true });
 
-      // Update local profile
       Object.assign(profile, updateData);
 
       alert('Profile updated!');
