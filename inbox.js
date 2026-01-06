@@ -25,7 +25,7 @@ async function renderInbox() {
               ${!m.otherProfile.photoURL ? m.otherProfile.name?.charAt(0).toUpperCase() : ''}
             </div>
             <div class="match-content">
-              <strong>${m.otherProfile.name || "Unknown User"}</strong> <small>(${m.otherProfile.vibe?.[0] || "Unknown"})</small><br>
+              <strong>${m.otherProfile.name || "Unknown User"}</strong><br>
               <small>Last message: ... (skip or add later)</small>
             </div>
           </div>
