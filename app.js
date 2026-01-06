@@ -10,10 +10,10 @@ import { initVoiceSystem } from './voiceSystem.js';
 import { initNavigation } from './navigation.js';
 
 
-
 // Near the top, after imports
 export let allUsersCache = null;
 export let matchesCache = null;
+
 
 
 
@@ -69,29 +69,24 @@ onAuthStateChanged(auth, async (u) => {
   const snap = await getDoc(doc(db, "users", u.uid));
   const p = snap.data() || {};
 
-  if (!p.name || !p.vibe?.length) {
+  if (!p.name) {
     document.getElementById('app').innerHTML = `
       <div class="onboard">
         <h2>Almost there!</h2>
         <p>Tell us about you</p>
         <input id="name" placeholder="Your first name" class="input"><br><br>
-        <p><strong>Your travel vibe (pick 1–3)</strong></p>
-        <div class="vibes">
-          ${['Budget Explorer','Luxury Relaxer','Culture Seeker','Adrenaline Junkie'].map(v => `
-            <label><input type="radio" name="vibe" value="${v}" required> ${v}</label><br>
-          `).join('')}
-        </div><br>
+
         <button id="save" class="primary">Save & Find Buddies →</button>
       </div>`;
     
     document.getElementById('save').onclick = async () => {
       const name = document.getElementById('name').value.trim();
-      const vibe = document.querySelector('input[name="vibe"]:checked')?.value;
-      if (!name || !vibe) {
-        alert("Name + one travel vibe required");
-        return;
-      }
-      await setDoc(doc(db, "users", u.uid), { name, vibe: [vibe], updatedAt: new Date() }, { merge: true });
+      // const vibe = document.querySelector('input[name="vibe"]:checked')?.value;
+      // if (!name || !vibe) {
+      //   alert("Name + one travel vibe required");
+      //   return;
+      // }
+      await setDoc(doc(db, "users", u.uid), { name, /* vibe: [vibe], */ updatedAt: new Date() }, { merge: true });
 
     };
     return;
