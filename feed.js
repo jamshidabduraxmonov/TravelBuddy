@@ -30,9 +30,129 @@ async function getMeetStatus(candidateId) {
 
 async function renderFeed() {
     const content = document.getElementById('content');
+
+    const formatDate = (dateStr) => {
+      if (!dateStr) return 'Not specified';
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
     if (!content || !allUsersCache || !profile) return;
 
     content.innerHTML = `<div class="loading">Finding travel buddies...</div>`;
+
+    // For meeting request:
+
+    const incomingSnap = await getDocs(query(
+  collection(db, "meetRequests"),
+  where("recipientId", "==", user.uid),
+  where("status", "==", "pending")
+));
+
+if (!incomingSnap.empty) {
+  const req = incomingSnap.docs[0].data();
+  const requesterId = req.requesterId;
+  const requester = allUsersCache.find(u => u.id === requesterId) || {};
+
+  content.innerHTML = `
+    <div style="margin:20px;padding:20px;background:#fff;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;">
+      <h3>${requester.name || 'Someone'} wants to meet you as a buddy</h3>
+      <div style="margin:20px 0;">
+        <button id="accept-req" style="background:#00c853;color:white;padding:12px 24px;border:none;border-radius:30px;margin:0 10px;">Accept</button>
+        <button id="decline-req" style="background:#ff5252;color:white;padding:12px 24px;border:none;border-radius:30px;margin:0 10px;">Decline</button>
+      </div>
+    </div>
+    <div id="profile-below"></div>
+  `;
+
+  // Render requester's profile below
+  document.getElementById('profile-below').innerHTML = `
+    <div class="discovery-single">
+      <div class="profile-card">
+        <div class="feed-profile-pic" style="${requester.photoURL ? `background-image: url('${requester.photoURL}')` : ''}">
+          ${!requester.photoURL ? requester.name?.charAt(0).toUpperCase() || '?' : ''}
+        </div>
+        
+        <div class="profile-header">
+          <h2>${requester.name || 'Traveler'}</h2>
+        </div>
+
+        <div class="details-section">
+          <div class="detail-item">
+            <span class="detail-icon">📅</span>
+            <div>
+              <strong>Dubai Dates</strong>
+              <p>${requester.travelDates?.from ? 
+                `${formatDate(requester.travelDates.from)} - ${formatDate(requester.travelDates.to)}` : 
+                'Dates not set'}</p>
+            </div>
+          </div>
+          ${requester.accommodation ? `
+          <div class="detail-item">
+            <span class="detail-icon">🏨</span>
+            <div>
+              <strong>Staying at</strong>
+              <p>${requester.accommodation}</p>
+            </div>
+          </div>` : ''}
+          ${requester.currentIntention ? `
+          <div class="detail-item">
+            <span class="detail-icon">🎯</span>
+            <div>
+              <strong>Up for</strong>
+              <p>${requester.currentIntention}</p>
+            </div>
+          </div>` : ''}
+          ${requester.availability ? `
+          <div class="detail-item">
+            <span class="detail-icon">⏰</span>
+            <div>
+              <strong>Available</strong>
+              <p>${requester.availability}</p>
+            </div>
+          </div>` : ''}
+        </div>
+
+        <div class="audio-section">
+          ${[1,2,3].map(q => {
+            const url = requester.voiceAnswers?.[`q${q}`];
+            const questions = [
+              "What's something simple you enjoy more than people expect?",
+              "What feels different to you when you are in a new place?",
+              "Tell us about a small moment you enjoyed recently."
+            ];
+            return `
+              <div class="voice-answer-feed">
+                <div class="question-label">Q${q}: ${questions[q-1]}</div>
+                ${url ? `<audio controls src="${url}" preload="none"></audio>` : '<small>Not recorded</small>'}
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Accept/Decline buttons stay here -->
+      </div>
+    </div>
+  `;
+
+
+
+  // Button actions
+  document.getElementById('accept-req').onclick = async () => {
+  const matchId = [user.uid, requesterId].sort().join('_');
+  await setDoc(doc(db, "matches", matchId), { users: [user.uid, requesterId], createdAt: new Date() });
+  await setDoc(doc(db, "meetRequests", `${requesterId}_${user.uid}`), { status: "accepted" }, { merge: true });
+  openChat(matchId);
+};
+
+  document.getElementById('decline-req').onclick = async () => {
+  await setDoc(doc(db, "meetRequests", `${requesterId}_${user.uid}`), { status: "declined" }, { merge: true });
+  renderFeed();  // refreshes and removes card
+};
+
+  return;
+}
+
+// For meeting request  /////////////////////////////////////
 
     // 1. Manage Feed Generation
     const myVibe = profile.vibe || [];
@@ -40,7 +160,9 @@ async function renderFeed() {
 
     if (feedCandidates.length === 0 || lastVibe !== currentVibeKey) {
         feedCandidates = allUsersCache.filter(u =>
-            u.vibe?.some(v => myVibe.includes(v))
+            // u.vibe?.some(v => myVibe.includes(v))
+            // → replace with: true  (show everyone)
+        feedCandidates = allUsersCache.filter(u => true)
         );
 
         // Shuffle
@@ -78,51 +200,82 @@ if (currentCandidateIndex >= feedCandidates.length) {
         buttonStyle = "background:#667eea;color:white;";
     }
 
-    const formatDate = (dateStr) => {
-        if (!dateStr) return 'Not specified';
-        return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    };
+ 
 
     // 4. Render Card
-    content.innerHTML = `
-    <div class="discovery-single">
-      <div class="profile-card">
-        <div class="feed-profile-pic" style="${currentCandidate.photoURL ? `background-image: url('${currentCandidate.photoURL}')` : ''}">
-          ${!currentCandidate.photoURL ? (currentCandidate.name?.charAt(0).toUpperCase() || '?') : ''}
-        </div>
-        
-        <div class="profile-header">
-          <h2>${currentCandidate.name || 'Traveler'}</h2>
-          <div class="vibe-badge">${currentCandidate.vibe?.[0] || 'Explorer'}</div>
-        </div>
-
-        <div class="details-section">
-          <div class="detail-item">
-            <span class="detail-icon">📅</span>
-            <div>
-              <strong>Dubai Dates</strong>
-              <p>${currentCandidate.travelDates?.from ? `${formatDate(currentCandidate.travelDates.from)} - ${formatDate(currentCandidate.travelDates.to)}` : 'Dates not set'}</p>
-            </div>
-          </div>
-          ${currentCandidate.accommodation ? `<div class="detail-item"><span class="detail-icon">🏨</span><p>${currentCandidate.accommodation}</p></div>` : ''}
-        </div>
-
-        <div class="audio-section">
-          ${[1, 2, 3].map(q => {
-            const url = currentCandidate.voiceAnswers?.[`q${q}`];
-            return url ? `<div class="voice-answer-feed"><audio controls src="${url}" preload="none"></audio></div>` : '';
-          }).join('')}
-        </div>
-
-        <div class="action-buttons">
-          <button class="pass-btn">✗ Pass</button>
-          <button class="like-btn" ${buttonDisabled ? 'disabled' : ''} style="${buttonStyle}">
-            ${buttonText}
-          </button>
-        </div>
+      content.innerHTML = `
+  <div class="discovery-single">
+    <div class="profile-card">
+      <div class="feed-profile-pic" style="width:280px;height:420px;border-radius:16px;background-size:cover;background-position:center;${currentCandidate.photoURL ? `background-image:url('${currentCandidate.photoURL}')` : ''}">
+        ${!currentCandidate.photoURL ? currentCandidate.name?.charAt(0).toUpperCase() || '?' : ''}
       </div>
-      <div class="candidate-counter">${feedCandidates.length - currentCandidateIndex - 1} more buddies left</div>
-    </div>`;
+      
+      <div class="profile-header">
+        <h2>${currentCandidate.name || 'Traveler'}</h2>
+      </div>
+
+      <div class="details-section">
+        <div class="detail-item">
+          <span class="detail-icon">📅</span>
+          <div>
+            <strong>Dubai Dates</strong>
+            <p>${currentCandidate.travelDates?.from ? 
+              `${formatDate(currentCandidate.travelDates.from)} - ${formatDate(currentCandidate.travelDates.to)}` : 
+              'Dates not set'}</p>
+          </div>
+        </div>
+        ${currentCandidate.accommodation ? `
+        <div class="detail-item">
+          <span class="detail-icon">🏨</span>
+          <div>
+            <strong>Staying at</strong>
+            <p>${currentCandidate.accommodation}</p>
+          </div>
+        </div>` : ''}
+        ${currentCandidate.currentIntention ? `
+        <div class="detail-item">
+          <span class="detail-icon">🎯</span>
+          <div>
+            <strong>Up for</strong>
+            <p>${currentCandidate.currentIntention}</p>
+          </div>
+        </div>` : ''}
+        ${currentCandidate.availability ? `
+        <div class="detail-item">
+          <span class="detail-icon">⏰</span>
+          <div>
+            <strong>Available</strong>
+            <p>${currentCandidate.availability}</p>
+          </div>
+        </div>` : ''}
+      </div>
+
+      <div class="audio-section">
+        ${[1,2,3].map(q => {
+          const url = currentCandidate.voiceAnswers?.[`q${q}`];
+          const questions = [
+            "What's something simple you enjoy more than people expect?",
+            "What feels different to you when you are in a new place?",
+            "Tell us about a small moment you enjoyed recently."
+          ];
+          return `
+            <div class="voice-answer-feed">
+              <div class="question-label">Q${q}: ${questions[q-1]}</div>
+              ${url ? `<audio controls src="${url}" preload="none"></audio>` : '<small>Not recorded</small>'}
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="action-buttons">
+        <button class="pass-btn">✗ Pass</button>
+        <button class="like-btn" ${buttonDisabled ? 'disabled' : ''} style="${buttonStyle}">
+          ${buttonText}
+        </button>
+      </div>
+    </div>
+    <div class="candidate-counter">${feedCandidates.length - currentCandidateIndex - 1} more buddies left</div>
+  </div>`;
 
     // 5. Event Listeners
     content.querySelector('.pass-btn').onclick = () => {
@@ -130,18 +283,27 @@ if (currentCandidateIndex >= feedCandidates.length) {
         renderFeed();
     };
 
-    content.querySelector('.like-btn').onclick = async () => {
-        if (status.theirPending) {
-            const requestId = `${currentCandidate.id}_${user.uid}`;
-            await acceptMeetRequest(requestId, currentCandidate.id);
-            openChat([user.uid, currentCandidate.id].sort().join('_'));
-        } else {
-            await sendMeetRequest(currentCandidate.id);
-            meetCache.delete(currentCandidate.id); // Clear cache to refresh UI
-            renderFeed();
-        }
-    };
-}
+    content.querySelector('.like-btn')?.addEventListener('click', async () => {
+    if (confirm("Send meet request?")) {
+      const recipientId = currentCandidate.id;
+      const requestId = `${user.uid}_${recipientId}`;
+
+      await setDoc(doc(db, "meetRequests", requestId), {
+        requesterId: user.uid,
+        recipientId,
+        status: "pending",
+        requesterName: profile.name,
+        createdAt: new Date()
+      });
+
+      meetCache.delete(recipientId); // Note: If you increment index, you won't see the "Pending" button anyway because you move to the next person.
+
+      
+      renderFeed();  // moves to next + refreshes button to Pending
+    }
+    });
+
+  }
 
 // Helper Functions
 async function sendMeetRequest(recipientId) {
