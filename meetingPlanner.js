@@ -5,6 +5,14 @@ import { getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-fire
 
 let meetingListener = null;
 
+const MEETING_LOCATIONS = [
+  {
+    name: "Global Village - Gate of the World (main entrance)",
+    url: "https://www.google.com/maps/search/?api=1&query=Global+Village+Dubai",
+    tip: "Meet at the main entrance near the big arch!"
+  }
+];
+
 export function initMeetingPlanner(matchId, container) {
   if (meetingListener) meetingListener(); 
 
@@ -21,14 +29,20 @@ export function initMeetingPlanner(matchId, container) {
 
 async function setupInitialMeeting(matchId) {
   const meetingRef = doc(db, "matches", matchId, "meeting", "details");
+  const randomLoc = MEETING_LOCATIONS[0];
+
   await setDoc(meetingRef, {
     date: "Tomorrow",
-    time: "6pm",
-    address: "Dubai Mall",
+    time: "6:00 PM",
+    address: randomLoc.name,
+    mapUrl: randomLoc.url,
+    locationTip: randomLoc.tip, // ADD THIS LINE
     status: "pending",
     acceptedBy: []
   });
 }
+
+
 
 function renderPlannerUI(matchId, data, container) {
   const isAccepted = data.status === "accepted";
@@ -39,6 +53,10 @@ function renderPlannerUI(matchId, data, container) {
   const lastState = localStorage.getItem('plannerExpanded') || 'open';
   const stateClass = lastState === 'open' ? 'planner-open' : 'planner-minimized';
   const { dates, times } = getPlannerOptions();
+
+
+  checkAndExpireMeeting(matchId, data);
+  
 
   container.innerHTML = `
     <div id="planner-wrapper" class="${stateClass}">
@@ -57,9 +75,16 @@ function renderPlannerUI(matchId, data, container) {
             ${times.map(t => `<option value="${t}" ${t === data.time ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
           in 
-          <button class="loc-btn" onclick="window.open('https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.address)}')">
-            ${data.address}
+          <button class="loc-btn" onclick="window.open('${data.mapUrl}', '_blank')">
+            📍 ${data.address}
           </button>
+
+          ${data.locationTip ? `
+            <div style="font-size: 0.85rem; color: #666; margin-top: 5px; font-style: italic;">
+              Tip: ${data.locationTip}
+            </div>
+          ` : ''}
+
         </div>
 
         <div class="planner-actions">
@@ -186,4 +211,35 @@ function getPlannerOptions() {
   }
 
   return { dates, times };
+}
+
+
+
+
+
+
+
+
+// For meeting Expiry
+
+async function checkAndExpireMeeting(matchId, data) {
+  if (data.status !== "accepted" || !data.date || !data.time) return;
+
+  const now = new Date();
+  let plannedDate = new Date(now);
+  if (data.date === 'Tomorrow') plannedDate.setDate(plannedDate.getDate() + 1);
+  const [hourStr, minStr, period] = data.time.split(/:| /);
+  let hour = parseInt(hourStr);
+  if (period === 'PM' && hour !== 12) hour += 12;
+  if (period === 'AM' && hour === 12) hour = 0;
+  plannedDate.setHours(hour, parseInt(minStr || '00'), 0, 0);
+  isExpired = plannedDate < now;
+
+  if (plannedDate < new Date()) {
+    const meetingRef = doc(db, "matches", matchId, "meeting", "details");
+    await updateDoc(meetingRef, {
+      status: "expired",
+      acceptedBy: []
+    });
+  }
 }

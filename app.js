@@ -1,14 +1,24 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+import {
+  getAuth,
+  onAuthStateChanged,
+
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 import { doc, getDoc, getDocs, collection,  setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-import { renderFeed } from './feed.js';
-import { renderProfileSettings } from './profile.js';
+
 import { initVoiceSystem } from './voiceSystem.js';
 import { initNavigation } from './navigation.js';
 
+
+let pullStartY = 0;
+let pullDistance = 0;
+const pullThreshold = 120; // pixels to trigger refresh
 
 // Near the top, after imports
 export let allUsersCache = null;
@@ -55,68 +65,51 @@ export { initVoiceSystem };
 
 
 onAuthStateChanged(auth, async (u) => {
-  if (!u) {
-    document.getElementById('app').innerHTML = `
-      <div class="onboard">
-        <h1>Travel Buddy Dubai ✈️</h1>
-        <p>Find your perfect solo travel partner</p>
-        <button id="signin" class="primary">Get Started</button>
-      </div>`;
-    document.getElementById('signin').onclick = () => signInAnonymously(auth);
-    return;
+  user = u; // always set, can be null
+
+  let p = {};
+  if (u) {
+    const snap = await getDoc(doc(db, "users", u.uid));
+    p = snap.data() || {};
   }
-
-  const snap = await getDoc(doc(db, "users", u.uid));
-  const p = snap.data() || {};
-
-  if (!p.name) {
-    document.getElementById('app').innerHTML = `
-      <div class="onboard">
-        <h2>Almost there!</h2>
-        <p>Tell us about you</p>
-        <input id="name" placeholder="Your first name" class="input"><br><br>
-
-        <button id="save" class="primary">Save & Find Buddies →</button>
-      </div>`;
-    
-    document.getElementById('save').onclick = async () => {
-      const name = document.getElementById('name').value.trim();
-      // const vibe = document.querySelector('input[name="vibe"]:checked')?.value;
-      // if (!name || !vibe) {
-      //   alert("Name + one travel vibe required");
-      //   return;
-      // }
-      await setDoc(doc(db, "users", u.uid), { name, /* vibe: [vibe], */ updatedAt: new Date() }, { merge: true });
-
-    };
-    return;
-  }
-
-  user = u;
   profile = p;
 
-  // Inside onAuthStateChanged, right after profile load (after if (!p.name || !p.vibe?.length))
-if (!allUsersCache) {
-  const snap = await getDocs(collection(db, "users"));
-  allUsersCache = snap.docs
-    .filter(doc => doc.id !== u.uid)
-    .map(doc => ({ id: doc.id, ...doc.data() }));
-}
 
 
-if (!matchesCache) {
-  const q = query(collection(db, "matches"), where("users", "array-contains", u.uid));
-  const snap = await getDocs(q);
-  matchesCache = await Promise.all(snap.docs.map(async docSnap => {
-    const data = docSnap.data();
-    const otherId = data.users.find(id => id !== u.uid);
-    const otherProfile = allUsersCache.find(u => u.id === otherId) || {};
-    // last msg optional - skip or cache separately if needed
-    return { matchId: docSnap.id, otherProfile, data };
-  }));
-}
+  if (u && !p.name && u.displayName) {
+    await setDoc(doc(db, "users", u.uid), { 
+      name: u.displayName, 
+      photoURL: u.photoURL || '', 
+      updatedAt: new Date() 
+    }, { merge: true });
+    profile.name = u.displayName;
+    profile.photoURL = u.photoURL || '';
+  }
 
 
+
+  // Load caches (guests can see feed, but limited actions)
+  if (!allUsersCache) {
+    const snap = await getDocs(collection(db, "users"));
+    allUsersCache = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+
+
+  allUsersCache = allUsersCache.filter(u => u.id !== u.uid);
+
+
+  if (u && !matchesCache) {
+    const q = query(collection(db, "matches"), where("users", "array-contains", u.uid));
+    const snap = await getDocs(q);
+    matchesCache = await Promise.all(snap.docs.map(async docSnap => {
+      const data = docSnap.data();
+      const otherId = data.users.find(id => id !== u.uid);
+      const otherProfile = allUsersCache.find(u => u.id === otherId) || {};
+      return { matchId: docSnap.id, otherProfile, data };
+    }));
+  }
+
+  
   document.getElementById('app').innerHTML = `
     <div id="content"></div>
     <div class="nav">
@@ -127,6 +120,94 @@ if (!matchesCache) {
   `;
 
   initNavigation();
-  renderFeed();
 
+  // Auto-open feed (works for guests too)
+  document.getElementById('feedBtn').click();
+});
+
+
+
+
+
+
+
+
+// For refresh:
+
+// Pull-to-refresh logic
+document.addEventListener('touchstart', e => {
+  if (e.touches.length === 1 && window.scrollY === 0) {
+    pullStartY = e.touches[0].clientY;
+  }
+}, { passive: true });
+
+document.addEventListener('touchmove', e => {
+  if (pullStartY > 0 && e.touches.length === 1) {
+    pullDistance = e.touches[0].clientY - pullStartY;
+    if (pullDistance > 0 && window.scrollY === 0) {
+      e.preventDefault(); // stop overscroll bounce
+    }
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  if (pullDistance > pullThreshold) {
+    window.location.reload(true); // force full reload
+  }
+  pullStartY = 0;
+  pullDistance = 0;
+});
+
+
+
+
+
+
+
+// For display
+
+
+let refreshSpinner = null;
+
+document.addEventListener('touchmove', e => {
+  if (pullStartY > 0 && e.touches.length === 1) {
+    pullDistance = e.touches[0].clientY - pullStartY;
+    if (pullDistance > 0 && window.scrollY === 0) {
+      e.preventDefault();
+
+      if (!refreshSpinner) {
+        refreshSpinner = document.createElement('div');
+        refreshSpinner.style.cssText = `
+          position:fixed; top:0; left:0; right:0; height:60px;
+          display:flex; align-items:center; justify-content:center;
+          background:rgba(255,255,255,0.9); z-index:9999; transform:translateY(-100%);
+          transition:transform 0.3s;
+        `;
+        refreshSpinner.innerHTML = '<div style="font-size:32px;animation:spin 1s linear infinite;">↻</div>';
+        document.body.appendChild(refreshSpinner);
+      }
+
+      const progress = Math.min(pullDistance / pullThreshold, 1);
+      refreshSpinner.style.transform = `translateY(${progress * 60}px)`;
+    }
+  }
+});
+
+document.addEventListener('touchend', () => {
+  if (refreshSpinner) {
+    if (pullDistance > pullThreshold) {
+      refreshSpinner.style.transform = 'translateY(60px)';
+      setTimeout(() => window.location.reload(true), 300);
+    } else {
+      refreshSpinner.style.transform = 'translateY(-100%)';
+      setTimeout(() => {
+        if (refreshSpinner) {
+          refreshSpinner.remove();
+          refreshSpinner = null;
+        }
+      }, 300);
+    }
+  }
+  pullStartY = 0;
+  pullDistance = 0;
 });

@@ -665,12 +665,33 @@ select {
   border-radius: 10px;
 }
 
+
+
 .action-buttons {
+  position: fixed;
+  bottom: 90px;           /* above nav (nav height 70px + 20px gap) */
+  left: 0;
+  right: 0;
+  z-index: 999;
   display: flex;
-  gap: 15px;
-  margin-top: 25px;
+  justify-content: center;
+  gap: 20px;
+  padding: 0 20px;
+  pointer-events: none;   /* prevents blocking scroll */
 }
 
+.action-buttons > button {
+  pointer-events: auto;   /* only buttons clickable */
+  flex: 0 0 auto;         /* keep original size */
+  width: 140px;           /* or your preferred fixed width */
+  padding: 16px 0;
+  font-size: 18px;
+}
+
+
+
+
+  
 .pass-btn, .like-btn {
   flex: 1;
   padding: 18px;
@@ -1188,17 +1209,53 @@ select {
 #suggestBtn.suggest { background: #f0ad4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; }
 .loc-btn { border: none; background: none; color: #007bff; text-decoration: underline; cursor: pointer; }
 
+
+
+
+.planner-row div {
+  background: #fdfdfd;
+  padding: 4px 8px;
+  border-left: 2px solid #007bff;
+  display: inline-block; /* Keeps it contained */
+}
 </style>
+
+
+
+
+<!-- For the reload and its display -->
+
+<style>
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+
+
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
+
+
+  
 
 
 </head>
 <body>
 
     
-    <div id="app">Loading...</div>
+    <div id="app">
+  <div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;">
+    <div style="font-size:60px;animation:spin 1.2s linear infinite;">⏳</div>
+    <p style="margin-top:16px;font-size:20px;color:#555;">SeeU in Dubai</p>
+  </div>
+</div>
+
+
     
 
     <script type="module" src="app.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 
     <!-- Add to your index.html -->

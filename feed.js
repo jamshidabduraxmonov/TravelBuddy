@@ -13,9 +13,9 @@ async function getMeetStatus(candidateId) {
     if (meetCache.has(candidateId)) return meetCache.get(candidateId);
 
     const [matchSnap, mySnap, theirSnap] = await Promise.all([
-        getDoc(doc(db, "matches", [user.uid, candidateId].sort().join('_'))),
-        getDoc(doc(db, "meetRequests", `${user.uid}_${candidateId}`)),
-        getDoc(doc(db, "meetRequests", `${candidateId}_${user.uid}`))
+        user ? getDoc(doc(db, "matches", [user.uid, candidateId].sort().join('_'))) : Promise.resolve({ exists: () => false }),
+        user ? getDoc(doc(db, "meetRequests", `${user.uid}_${candidateId}`)) : Promise.resolve({ exists: () => false }),
+        user ? getDoc(doc(db, "meetRequests", `${candidateId}_${user.uid}`)) : Promise.resolve({ exists: () => false })
     ]);
 
     const status = {
@@ -38,20 +38,46 @@ async function renderFeed() {
 
     if (!content || !allUsersCache || !profile) return;
 
-    content.innerHTML = `<div class="loading">Finding travel buddies...</div>`;
+    content.innerHTML = `<div class="loading" style="text-align:center; padding:100px 20px;">
+      <div style="font-size:48px; animation: spin 1.5s linear infinite;">⏳</div>
+      <p style="margin-top:16px; font-size:18px;">Loading buddies...</p>
+    </div>
+
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>`;
 
     // For meeting request:
 
     const incomingSnap = await getDocs(query(
   collection(db, "meetRequests"),
-  where("recipientId", "==", user.uid),
+  where("recipientId", "==", user ? user.uid : ""),
   where("status", "==", "pending")
 ));
 
 if (!incomingSnap.empty) {
   const req = incomingSnap.docs[0].data();
   const requesterId = req.requesterId;
-  const requester = allUsersCache.find(u => u.id === requesterId) || {};
+  
+
+
+
+
+let requester = allUsersCache.find(u => u.id === requesterId) || { name: 'Loading...', photoURL: '' };
+
+// Fetch fresh if not in cache
+if (!requester.name || requester.name === 'Loading...') {
+  const snap = await getDoc(doc(db, "users", requesterId));
+  if (snap.exists()) {
+    requester = { id: requesterId, ...snap.data() };
+  } else {
+    requester = { name: 'Unknown User', photoURL: '' };
+  }
+}
+
 
   content.innerHTML = `
     <div style="margin:20px;padding:20px;background:#fff;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;">
@@ -68,7 +94,7 @@ if (!incomingSnap.empty) {
   document.getElementById('profile-below').innerHTML = `
     <div class="discovery-single">
       <div class="profile-card">
-        <div class="feed-profile-pic" style="${requester.photoURL ? `background-image: url('${requester.photoURL}')` : ''}">
+        <div class="feed-profile-pic" style="width:280px;height:420px;border-radius:16px;background-size:cover;background-position:center;${requester.photoURL ? `background-image: url('${requester.photoURL}')` : ''}">
           ${!requester.photoURL ? requester.name?.charAt(0).toUpperCase() || '?' : ''}
         </div>
         
@@ -138,6 +164,7 @@ if (!incomingSnap.empty) {
 
   // Button actions
   document.getElementById('accept-req').onclick = async () => {
+  if (!user) return;
   const matchId = [user.uid, requesterId].sort().join('_');
   await setDoc(doc(db, "matches", matchId), { users: [user.uid, requesterId], createdAt: new Date() });
   await setDoc(doc(db, "meetRequests", `${requesterId}_${user.uid}`), { status: "accepted" }, { merge: true });
@@ -145,6 +172,7 @@ if (!incomingSnap.empty) {
 };
 
   document.getElementById('decline-req').onclick = async () => {
+  if (!user) return;
   await setDoc(doc(db, "meetRequests", `${requesterId}_${user.uid}`), { status: "declined" }, { merge: true });
   renderFeed();  // refreshes and removes card
 };
@@ -162,7 +190,9 @@ if (!incomingSnap.empty) {
         feedCandidates = allUsersCache.filter(u =>
             // u.vibe?.some(v => myVibe.includes(v))
             // → replace with: true  (show everyone)
-        feedCandidates = allUsersCache.filter(u => true)
+        feedCandidates = allUsersCache.filter(u => u.id !== user?.uid),
+        console.log('Current user UID:', user?.uid),
+        console.log('Filtered out self?', feedCandidates.some(u => u.id === user?.uid))
         );
 
         // Shuffle
@@ -215,15 +245,6 @@ if (currentCandidateIndex >= feedCandidates.length) {
       </div>
 
       <div class="details-section">
-        <div class="detail-item">
-          <span class="detail-icon">📅</span>
-          <div>
-            <strong>Dubai Dates</strong>
-            <p>${currentCandidate.travelDates?.from ? 
-              `${formatDate(currentCandidate.travelDates.from)} - ${formatDate(currentCandidate.travelDates.to)}` : 
-              'Dates not set'}</p>
-          </div>
-        </div>
         ${currentCandidate.accommodation ? `
         <div class="detail-item">
           <span class="detail-icon">🏨</span>
@@ -245,7 +266,9 @@ if (currentCandidateIndex >= feedCandidates.length) {
           <span class="detail-icon">⏰</span>
           <div>
             <strong>Available</strong>
-            <p>${currentCandidate.availability}</p>
+            <p>${currentCandidate.availability === 'Other date' && currentCandidate.availabilityDate 
+              ? formatDate(currentCandidate.availabilityDate) 
+              : currentCandidate.availability || 'Not set'}</p>
           </div>
         </div>` : ''}
       </div>
@@ -269,8 +292,12 @@ if (currentCandidateIndex >= feedCandidates.length) {
 
       <div class="action-buttons">
         <button class="pass-btn">✗ Pass</button>
-        <button class="like-btn" ${buttonDisabled ? 'disabled' : ''} style="${buttonStyle}">
-          ${buttonText}
+        <button class="like-btn" 
+          ${buttonDisabled || currentCandidate.id === user?.uid ? 'disabled' : ''} 
+          style="${buttonDisabled || currentCandidate.id === user?.uid 
+            ? 'background:#ccc;color:#999;cursor:not-allowed;opacity:0.6;' 
+            : buttonStyle}">
+          ${currentCandidate.id === user?.uid ? 'Your profile' : buttonText}
         </button>
       </div>
     </div>
@@ -283,10 +310,18 @@ if (currentCandidateIndex >= feedCandidates.length) {
         renderFeed();
     };
 
-    content.querySelector('.like-btn')?.addEventListener('click', async () => {
+    content.querySelector('.like-btn')?.addEventListener('click', async () => {      
+      
+      if (!user) {
+        alert("Please sign in to send meetup requests");
+        document.getElementById('profileBtn').click();
+        return;
+      } 
+
     if (confirm("Send meet request?")) {
       const recipientId = currentCandidate.id;
       const requestId = `${user.uid}_${recipientId}`;
+// (already protected by if (!user) above)
 
       await setDoc(doc(db, "meetRequests", requestId), {
         requesterId: user.uid,
@@ -307,6 +342,8 @@ if (currentCandidateIndex >= feedCandidates.length) {
 
 // Helper Functions
 async function sendMeetRequest(recipientId) {
+    if (!user) return;
+
     const requestId = `${user.uid}_${recipientId}`;
     await setDoc(doc(db, "meetRequests", requestId), {
         requesterId: user.uid,
@@ -318,7 +355,9 @@ async function sendMeetRequest(recipientId) {
 }
 
 async function acceptMeetRequest(requestId, requesterId) {
-    await setDoc(doc(db, "meetRequests", requestId), { status: "accepted" }, { merge: true });
+  if (!user) return;
+
+  await setDoc(doc(db, "meetRequests", requestId), { status: "accepted" }, { merge: true });
     const matchId = [user.uid, requesterId].sort().join('_');
     await setDoc(doc(db, "matches", matchId), {
         users: [user.uid, requesterId],

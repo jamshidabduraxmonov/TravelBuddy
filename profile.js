@@ -1,13 +1,18 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+
 import { collection, query, where, getDocs, limit, orderBy, doc, setDoc, addDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 
-import { db, user, profile, storage, app} from './app.js';
+import { db, user, profile, storage, app, auth} from './app.js';
 import {sendMessage, listenToChat} from './chat.js';
 import { handleRecord, handlePlay, handleStop, handleSave, handleDelete, initVoiceSystem } from './voiceSystem.js';
 import { renderFeed } from './feed.js';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
 
 
 
@@ -16,6 +21,94 @@ import { renderFeed } from './feed.js';
 // Profile Settings
 
 async function renderProfileSettings() {
+
+  
+
+  if (!user) {
+  content.innerHTML = `
+    <div class="onboard" style="text-align:center; padding:40px 20px; max-width:400px; margin:0 auto;">
+      <h1>SeeU in Dubai ✈️</h1>
+      <p>Find your perfect solo travel partner</p>
+
+      <input id="email" class="input" type="email" placeholder="Email"
+        style="width:100%;padding:16px;margin:10px 0;border-radius:12px;border:1px solid #ddd;" />
+
+      <input id="password" class="input" type="password" placeholder="Password"
+        style="width:100%;padding:16px;margin:10px 0;border-radius:12px;border:1px solid #ddd;" />
+
+      <button id="loginBtn" class="primary">Login</button>
+    </div>
+  `;
+
+    document.getElementById('loginBtn').onclick = async () => {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      if (!email || !password) {
+        alert("Email and password required");
+        return;
+      }
+      
+      if (!email.includes('@') || !email.includes('.')) {
+          alert("Invalid email format");
+          return;
+        }
+
+        if (password.length < 6 || !/\d/.test(password) || !/[a-zA-Z]/.test(password)) {
+          alert("Password must be 6+ chars with letters and numbers");
+          return;
+        }
+
+
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        if (
+          err.code === 'auth/user-not-found' ||
+          err.code === 'auth/invalid-credential'
+        ) {
+          try {
+            await createUserWithEmailAndPassword(auth, email, password);
+          } catch (signupErr) {
+            alert(signupErr.message);
+          }
+        } else {
+          alert(err.message);
+        }
+      }
+    };
+
+
+
+  document.getElementById('signupBtn').onclick = async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value.trim();
+
+    if (!email || !password) {
+      alert("Email and password required");
+      return;
+    }
+
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return;
+}
+
+
+
+
+
+
+  
+
+
+
+
   
   content.innerHTML = `
   <div class="profile-settings">
@@ -41,11 +134,20 @@ async function renderProfileSettings() {
 
 
     <div class="setting-group">
-      <label>Your Dubai Dates *</label>
-      <div class="date-inputs">
-        <input type="date" id="dateFrom" value="${profile.travelDates?.from || ''}" placeholder="From">
-        <span>to</span>
-        <input type="date" id="dateTo" value="${profile.travelDates?.to || ''}" placeholder="To">
+      <label>⏰ Availability</label>
+      <div class="availability-options" style="display:grid; gap:12px;">
+        ${['Today', 'Tomorrow', 'Other date']
+          .map(opt => `
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="radio" name="availability" value="${opt}" 
+                ${profile.availability === opt ? 'checked' : ''}>
+              ${opt}
+            </label>
+          `).join('')}
+      </div>
+
+      <div id="otherDateGroup" style="display:${profile.availability === 'Other date' ? 'block' : 'none'}; margin-top:12px;">
+        <input type="date" id="availabilityDate" value="${profile.availabilityDate || ''}">
       </div>
     </div>
 
@@ -151,28 +253,22 @@ async function renderProfileSettings() {
 
 
 
-    <div class="setting-group">
-      <label>⏰ Availability (optional)</label>
-      <div class="availability-options" style="display:grid; gap:12px;">
-        ${['Today', 'Tomorrow']
-          .map(opt => `
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="radio" name="availability" value="${opt}" 
-                ${profile.availability === opt ? 'checked' : ''}>
-              ${opt}
-            </label>
-          `).join('')}
-      </div>
-    </div>
+   
 
 
     <button id="saveProfile" class="save-btn">Save & Continue</button>
+    
   </div>
 `;
 
 
 
-
+document.querySelectorAll('input[name="availability"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.getElementById('otherDateGroup').style.display = 
+        radio.value === 'Other date' ? 'block' : 'none';
+    });
+  });
 
 
 
@@ -269,31 +365,50 @@ document.getElementById('voiceQuestionsContainer').addEventListener('click', asy
     // Save handler
   document.getElementById('saveProfile').onclick = async () => {
     const newName = document.getElementById('profileName').value.trim();
-    const dateFrom = document.getElementById('dateFrom').value;
-    const dateTo = document.getElementById('dateTo').value;
     const accommodation = document.getElementById('accommodation').value.trim();
-    
+
     const currentIntention = document.querySelector('input[name="currentIntention"]:checked')?.value;
     const availability = document.querySelector('input[name="availability"]:checked')?.value;
 
-    if (!newName || !dateFrom || !dateTo) {
-      alert('Please fill all required fields (*)');
+    let availabilityDate = '';
+    if (availability === 'Other date') {
+      availabilityDate = document.getElementById('availabilityDate').value;
+      if (!availabilityDate) {
+        alert('Please select a date for "Other date"');
+        return;
+      }
+    }
+
+    if (!newName) {
+      alert('Please enter your name');
       return;
     }
 
     try {
-      const updateData = {
-        name: newName,
-        travelDates: { from: dateFrom, to: dateTo },
-        accommodation,
-        currentIntention,
-        availability,
-        updatedAt: new Date()
-      };
+     const updateData = {
+      name: newName,
+      accommodation,
+      currentIntention,
+      availability,
+      updatedAt: new Date()
+    };
+
+    if (availabilityDate) updateData.availabilityDate = availabilityDate;
+
+      // Only add if value exists
+if (currentIntention) updateData.currentIntention = currentIntention;
+if (availability) updateData.availability = availability;
+if (profile.photoURL) updateData.photoURL = profile.photoURL;
 
       if (profile.photoURL) {
         updateData.photoURL = profile.photoURL;
       }
+
+      if (!newName) { alert('Name is required'); return; }
+      if (!currentIntention) { alert('Select intention'); return; }
+      if (!availability) { alert('Select availability'); return; }
+
+
 
       await setDoc(doc(db, "users", user.uid), updateData, { merge: true });
 
@@ -305,6 +420,12 @@ document.getElementById('voiceQuestionsContainer').addEventListener('click', asy
       alert('Error: ' + error.message);
     }
   };
+
+  // document.getElementById('logoutBtn').onclick = async () => {
+  //   await auth.signOut();
+  //   // Optional: force reload
+  //   window.location.reload();
+  // };
 
 
 

@@ -2,13 +2,18 @@
 
 // IMPORTS
 import { collection, query, where, getDocs, limit, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { matchesCache } from './app.js';
+import { matchesCache, user } from './app.js';
 import { openChat } from './chat.js';
 
 
 
 async function renderInbox() {
   const content = document.getElementById('content');
+
+  if (!user) {
+    content.innerHTML = `<p style="text-align:center; padding:40px;">Sign in to see your matches and messages</p>`;
+    return;
+  }
 
   if (matchesCache.length === 0) {
     content.innerHTML = `<p>No matches yet. Start liking in Discovery!</p>`;
