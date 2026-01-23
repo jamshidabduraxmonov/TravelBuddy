@@ -81,7 +81,7 @@ if (!requester.name || requester.name === 'Loading...') {
 
   content.innerHTML = `
     <div style="margin:20px;padding:20px;background:#fff;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;">
-      <h3>${requester.name || 'Someone'} wants to meet you as a buddy</h3>
+      <h3>${requester.name || 'Someone'} is up for a hangout—are you in?</h3>
       <div style="margin:20px 0;">
         <button id="accept-req" style="background:#00c853;color:white;padding:12px 24px;border:none;border-radius:30px;margin:0 10px;">Accept</button>
         <button id="decline-req" style="background:#ff5252;color:white;padding:12px 24px;border:none;border-radius:30px;margin:0 10px;">Decline</button>
@@ -312,11 +312,17 @@ if (currentCandidateIndex >= feedCandidates.length) {
 
     content.querySelector('.like-btn')?.addEventListener('click', async () => {      
       
-      if (!user) {
+     if (!user) {
         alert("Please sign in to send meetup requests");
         document.getElementById('profileBtn').click();
         return;
-      } 
+      }
+
+      if (!profile?.name?.trim()) {
+        alert("Please set your name in Profile first");
+        document.getElementById('profileBtn').click();
+        return;
+      }
 
     if (confirm("Send meet request?")) {
       const recipientId = currentCandidate.id;

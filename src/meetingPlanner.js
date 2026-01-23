@@ -9,7 +9,7 @@ const MEETING_LOCATIONS = [
   {
     name: "Global Village - Gate of the World (main entrance)",
     url: "https://www.google.com/maps/search/?api=1&query=Global+Village+Dubai",
-    tip: "Meet at the main entrance near the big arch!"
+    tip: "Tip: Meet near the big arch so you don’t get lost!"
   }
 ];
 
