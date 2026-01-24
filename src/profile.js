@@ -217,7 +217,7 @@ async function renderProfileSettings() {
         <!-- Question 2 -->
         <div class="voice-question" data-q="2">
           <div class="question-header">
-            <strong>🎤 2. What feels different to you when you are in a new place?</strong>
+            <strong>🎤 2. What made you smile today?</strong>
             <span class="question-status" data-status="empty">Not recorded</span>
           </div>
           

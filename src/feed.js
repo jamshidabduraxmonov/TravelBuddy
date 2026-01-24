@@ -143,7 +143,7 @@ if (!requester.name || requester.name === 'Loading...') {
             const url = requester.voiceAnswers?.[`q${q}`];
             const questions = [
               "What's something simple you enjoy more than people expect?",
-              "What feels different to you when you are in a new place?",
+              "What made you smile today?",
               "Tell us about a small moment you enjoyed recently."
             ];
             return `
@@ -278,7 +278,7 @@ if (currentCandidateIndex >= feedCandidates.length) {
           const url = currentCandidate.voiceAnswers?.[`q${q}`];
           const questions = [
             "What's something simple you enjoy more than people expect?",
-            "What feels different to you when you are in a new place?",
+            "What made you smile today?",
             "Tell us about a small moment you enjoyed recently."
           ];
           return `
