@@ -28,16 +28,40 @@ async function renderProfileSettings() {
   content.innerHTML = `
     <div class="onboard" style="text-align:center; padding:40px 20px; max-width:400px; margin:0 auto;">
       <h1>SeeU in Dubai ✈️</h1>
-      <p>Find your perfect solo travel partner</p>
+      <p>Meet new friends to hang out!</p>
 
       <input id="email" class="input" type="email" placeholder="Email"
         style="width:100%;padding:16px;margin:10px 0;border-radius:12px;border:1px solid #ddd;" />
 
-      <input id="password" class="input" type="password" placeholder="Password"
+      <input id="password" class="input" type="password" placeholder="Create Password(or enter previous one)"
         style="width:100%;padding:16px;margin:10px 0;border-radius:12px;border:1px solid #ddd;" />
+
+        <button onclick="togglePassword()">Show Password</button>
 
       <button id="loginBtn" class="primary">Login</button>
     </div>
+
+
+
+
+    <div
+        style="
+          background-color: #fff4e5;
+          border-left: 6px solid #ffa500;
+          color: #663c00;
+          padding: 16px;
+          margin-top: 20px;
+          border-radius: 8px;
+          font-family: Arial, sans-serif;
+          font-size: 14px;
+          line-height: 1.5;
+        "
+      >
+        ⚠️ <strong>Important:</strong> Make sure to keep your password safe. 
+        We recommend recording it somewhere secure or taking a screenshot. 
+        If you forget it or lose access, you won’t be able to log in again.
+     </div>
+
   `;
 
     document.getElementById('loginBtn').onclick = async () => {
@@ -70,7 +94,7 @@ async function renderProfileSettings() {
           try {
             await createUserWithEmailAndPassword(auth, email, password);
           } catch (signupErr) {
-            alert(signupErr.message);
+            alert("Wrong password! Please try again!");
           }
         } else {
           alert(err.message);

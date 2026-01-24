@@ -284,7 +284,7 @@ async function handleSave(qNumber) {
   // 1. Upload blob to Firebase Storage
   const downloadURL = await voiceRecorder.uploadAnswer(qNumber, state.blob);
   if (!downloadURL) {
-    alert("Upload failed. Try again.");
+    alert("Failed to save voice answer. Check internet and try again!");
     return;
   }
 
